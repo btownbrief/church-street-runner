@@ -50,6 +50,16 @@ function addLamps(g, offset = 0) {
   }
 }
 
+// hang a news banner across the street in this chunk (no-op if news is off)
+function addNewsBanner(g, z, y = 5.6) {
+  if (!isNewsEnabled()) return;
+  const banner = makeNewsBanner(y);
+  banner.position.z = z;
+  g.add(banner);
+  const prev = g.userData.onRecycle;
+  g.userData.onRecycle = () => { prev?.(); banner.userData.nextHeadline(); };
+}
+
 function put(g, obj, x, z, ry = 0) {
   obj.position.set(x, 0, z);
   obj.rotation.y = ry;
@@ -70,18 +80,13 @@ function chunkStorefront(rng) {
     if (rng() < 0.5) put(g, makeTrashCan(), side * (DECOR_X + 0.4), 3 + rng() * 4);
   }
   put(g, makeNewsBox(), (rng() < 0.5 ? -1 : 1) * (DECOR_X + 0.3), -9);
+  addNewsBanner(g, 2 + rng() * 6);
   return g;
 }
 
 // storefront variant with Big Joe + a busker performing
 function chunkStorefrontJazz(rng) {
   const g = chunkStorefront(rng);
-  if (isNewsEnabled()) {
-    const banner = makeNewsBanner(5.6);
-    banner.position.z = -4;
-    g.add(banner);
-    g.userData.onRecycle = () => banner.userData.nextHeadline();
-  }
   put(g, makeJoeBurrell(), -DECOR_X + 0.6, 1, Math.PI - 0.35); // Joe faces up the street toward the runner
   put(g, makeBusker(rng() < 0.5 ? 'sax' : 'violin'), DECOR_X - 0.6, -7, -0.8);
   // small audience
@@ -116,6 +121,7 @@ function chunkPatio(rng) {
   put(g, makePlanter(true), -side * DECOR_X, -8);
   put(g, makeTrashCan(), -side * DECOR_X, 4);
   put(g, makeTree(), -side * DECOR_X, 10);
+  addNewsBanner(g, -4 + rng() * 8);
   return g;
 }
 
@@ -164,12 +170,7 @@ function chunkIntersection(rng) {
   addLamps(g, ROAD_W / 2 + 2.5);
 
   // banner strung across the intersection, like the Festival of Fools photos
-  if (isNewsEnabled()) {
-    const banner = makeNewsBanner(5.8);
-    banner.position.z = -ROAD_W / 2 - 1.5;
-    g.add(banner);
-    g.userData.onRecycle = () => banner.userData.nextHeadline();
-  }
+  addNewsBanner(g, -ROAD_W / 2 - 1.5, 5.8);
 
   // ---- crossing cars (occasionally a parking-enforcement cart) ----
   const hazards = [];
@@ -226,6 +227,7 @@ function chunkTrees(rng) {
   put(g, makeBike(), (rng() < 0.5 ? -1 : 1) * (DECOR_X - 0.5), 13, Math.PI / 2 + rng());
   put(g, makeBoulderCluster(), -DECOR_X - 0.3, -4);
   put(g, makeBench(true), DECOR_X - 0.4, -2, Math.PI);
+  addNewsBanner(g, 4 + rng() * 6);
   return g;
 }
 
@@ -350,6 +352,7 @@ function chunkIceCream(rng) {
   put(g, makeBench(true), DECOR_X - 0.4, 0, Math.PI);
   put(g, makeTrashCan(), -DECOR_X - 0.6, 2);
   put(g, makePlanter(true), DECOR_X + 0.4, 8);
+  addNewsBanner(g, 10);
   return g;
 }
 
