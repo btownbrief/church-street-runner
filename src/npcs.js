@@ -140,11 +140,11 @@ export function makeSeatedPerson(opts = {}) {
 
 // styles: 'black' lab, 'golden', 'small', 'shaggy', 'brown'
 const DOG_STYLES = {
-  black: { body: 0x1d1c1a, ear: 0x111110, s: 1.0 },
-  golden: { body: 0xc99a52, ear: 0xb0823f, s: 1.0 },
-  small: { body: 0xe4dccb, ear: 0xc4b89e, s: 0.55 },
-  shaggy: { body: 0x8a7458, ear: 0x6e5a42, s: 0.95, shag: true },
-  brown: { body: 0x6b4a2f, ear: 0x553a24, s: 0.9 },
+  black: { body: 0x1d1c1a, ear: 0x111110, s: 1.35 },
+  golden: { body: 0xc99a52, ear: 0xb0823f, s: 1.35 },
+  small: { body: 0xe4dccb, ear: 0xc4b89e, s: 0.95 },
+  shaggy: { body: 0x8a7458, ear: 0x6e5a42, s: 1.3, shag: true },
+  brown: { body: 0x6b4a2f, ear: 0x553a24, s: 1.25 },
 };
 export function makeDog(style = 'golden') {
   const cfg = DOG_STYLES[style] || DOG_STYLES.golden;

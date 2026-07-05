@@ -318,6 +318,7 @@ export function makeSandwichBoard() {
   const scribble = box(0.015, 0.08, 0.34, MAT.trimDark, -0.225, 0.58, 0);
   scribble.rotation.z = -0.3;
   g.add(scribble);
+  g.scale.setScalar(1.35); // sized up for readability at speed
   return shadow(g);
 }
 
@@ -328,6 +329,7 @@ export function makeChair() {
   for (const [x, z] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) {
     g.add(box(0.04, 0.45, 0.04, MAT.ironBlack, x, 0.22, z));
   }
+  g.scale.setScalar(1.25);
   return shadow(g);
 }
 
@@ -464,6 +466,7 @@ export function makeNewsBox() {
   for (const [x, z] of [[-0.18, -0.15], [0.18, -0.15], [-0.18, 0.15], [0.18, 0.15]]) {
     g.add(box(0.05, 0.26, 0.05, MAT.ironBlack, x, 0.13, z));
   }
+  g.scale.setScalar(1.15);
   return shadow(g);
 }
 

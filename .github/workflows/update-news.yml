@@ -1,0 +1,32 @@
+name: Update news headlines
+
+on:
+  schedule:
+    # Monday & Friday at 17:00 UTC (≈ 1pm ET) — after each newsletter edition
+    - cron: '0 17 * * 1,5'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extract headlines from the Btown Brief RSS feed
+        run: node scripts/update-news.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "btown-news-bot"
+          git config user.email "actions@github.com"
+          git add docs/news.json public/news.json
+          if git diff --cached --quiet; then
+            echo "No headline changes."
+          else
+            git commit -m "Update news headlines from latest Btown Brief edition"
+            git push
+          fi

@@ -85,12 +85,11 @@ function makeJetpackPickup() {
   return g;
 }
 
+// The creemee IS the flight power-up — Vermont sugar rush.
 const KINDS = {
   coin: { build: makeCoin, value: 1, pool: 30 },
-  creemee: { build: makeCreemee, value: 15, pool: 3 },
-  maple: { build: makeMapleJug, value: 8, pool: 3 },
+  creemee: { build: makeCreemee, power: 'fly', pool: 2 },
   magnet: { build: makeMagnetPickup, power: 'magnet', pool: 2 },
-  jetpack: { build: makeJetpackPickup, power: 'jetpack', pool: 2 },
 };
 
 export class Collectibles {
@@ -119,18 +118,33 @@ export class Collectibles {
     return this.pool.find((it) => !it.active && it.kind === kind) || null;
   }
 
-  spawnLine(z) {
-    const lane = Math.floor(Math.random() * 3);
+  // true if an obstacle sits in/near this lane anywhere along the coin line
+  laneBlocked(lane, zStart, zEnd, obstacles) {
+    if (!obstacles) return false;
+    const lx = LANES[lane];
+    for (const o of obstacles.active) {
+      const oz = o.obj.position.z;
+      if (oz < zEnd - 2.5 || oz > zStart + 2.5) continue;
+      if (Math.abs(o.obj.position.x - lx) < 1.3) return true;
+      if (o.type.sub && Math.abs(o.obj.position.x + o.type.sub[0].dx - lx) < 1.2) return true;
+    }
+    return false;
+  }
+
+  spawnLine(z, obstacles) {
     const n = 4 + Math.floor(Math.random() * 3);
+    const zEnd = z - (n + 1) * 2.2;
+    // pick a lane with no obstacles along the whole line
+    const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
+    const lane = lanes.find((L) => !this.laneBlocked(L, z, zEnd, obstacles));
+    if (lane === undefined) return; // everywhere is contested — skip this line
     this.sincePower += 1;
-    // occasionally lead the line with a bonus item or power-up
+    // occasionally lead the line with a power-up (creemee = flight, magnet)
     let head = null;
     const roll = Math.random();
-    if (this.sincePower > 4 && roll < 0.22) {
-      head = this.acquire(roll < 0.12 ? 'magnet' : 'jetpack');
+    if (this.sincePower > 4 && roll < 0.24) {
+      head = this.acquire(roll < 0.12 ? 'magnet' : 'creemee');
       if (head) this.sincePower = 0;
-    } else if (roll < 0.42) {
-      head = this.acquire(roll < 0.32 ? 'maple' : 'creemee');
     }
     let zi = z;
     if (head) {
@@ -149,11 +163,11 @@ export class Collectibles {
   }
 
   // returns array of pickups collected this frame
-  update(dz, dt, t, player, magnetOn) {
+  update(dz, dt, t, player, magnetOn, obstacles) {
     const got = [];
     this.nextSpawnZ += dz;
     if (this.nextSpawnZ > -40) {
-      this.spawnLine(-135 - Math.random() * 8);
+      this.spawnLine(-135 - Math.random() * 8, obstacles);
       this.nextSpawnZ = -40 - (14 + Math.random() * 22);
     }
     const px = player.x, py = player.y + 1.0;
@@ -162,13 +176,29 @@ export class Collectibles {
       const o = it.obj;
       o.position.z += dz;
       o.rotation.y += dt * 3;
-      o.position.y = 1.05 + Math.sin(t * 4 + o.position.z * 0.5) * 0.08;
+      const bob = 1.05 + Math.sin(t * 4 + o.position.z * 0.5) * 0.08;
+      if (o.userData.lift === undefined || !magnetOn) o.userData.lift = 0;
+      o.position.y = bob + o.userData.lift;
       if (magnetOn) {
         const dx = px - o.position.x, dyz = -o.position.z;
         const dist = Math.hypot(dx, dyz);
         if (dist < 7 && o.position.z > -10) {
           o.position.x += dx * Math.min(1, dt * 8);
           o.position.z += (0 - o.position.z) * Math.min(1, dt * 6);
+          // pull vertically too, so coins rise to a flying player
+          o.userData.lift += (py - o.position.y) * Math.min(1, dt * 8);
+        }
+      }
+      // if a moving obstacle drifted onto a coin, remove the coin so it
+      // never visually merges with (or baits you into) an obstacle
+      if (obstacles && it.kind === 'coin') {
+        const hidden = obstacles.active.some((ob) =>
+          Math.abs(ob.obj.position.z - o.position.z) < ob.type.half.z + 1.0 &&
+          Math.abs(ob.obj.position.x - o.position.x) < ob.type.half.x + 0.8);
+        if (hidden) {
+          it.active = false;
+          o.visible = false;
+          continue;
         }
       }
       if (o.position.z > 8) {

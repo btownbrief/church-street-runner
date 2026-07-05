@@ -318,20 +318,19 @@ function update(dt, t) {
     // collectibles + power-ups
     if (magnetT > 0) magnetT -= dt;
     const wasFlying = player.flying > 0;
-    const got = collectibles.update(dz, dt, t, player, magnetT > 0);
+    // flying doubles as a magnet: soar over obstacles AND vacuum up coins
+    const attract = magnetT > 0 || player.flying > 0;
+    const got = collectibles.update(dz, dt, t, player, attract, obstacles);
     for (const it of got) {
       if (it.cfg.power === 'magnet') { magnetT = 7; sfx.magnetPickup(); }
-      else if (it.cfg.power === 'jetpack') { player.startFlight(4.5); sfx.jetpackPickup(); }
-      else {
-        coins += it.cfg.value;
-        if (it.kind === 'coin') sfx.coin(); else sfx.bonus();
-      }
+      else if (it.cfg.power === 'fly') { player.startFlight(4.5); sfx.bonus(); sfx.jetpackPickup(); }
+      else { coins += it.cfg.value; sfx.coin(); }
     }
     if (wasFlying && player.flying <= 0) sfx.jetpackEnd();
     if (magnetT <= 0 && magnetT > -dt * 2) sfx.magnetEnd();
     coinsEl.textContent = coins;
     powerEl.textContent =
-      player.flying > 0 ? `🚀 ${player.flying.toFixed(1)}s`
+      player.flying > 0 ? `🍦 ${player.flying.toFixed(1)}s`
       : magnetT > 0 ? `🧲 ${magnetT.toFixed(1)}s` : '';
 
     // invulnerability blink

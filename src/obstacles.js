@@ -16,7 +16,7 @@ export const LANES = [-2.1, 0, 2.1];
 function dogType(style, weight) {
   return {
     build: () => makeDog(style), kind: 'jump', weight,
-    half: { x: 0.45, z: 0.35 }, minY: 0, maxY: style === 'small' ? 0.5 : 0.75,
+    half: { x: 0.6, z: 0.45 }, minY: 0, maxY: style === 'small' ? 0.75 : 1.0,
     move: 'wander',
   };
 }
@@ -44,7 +44,7 @@ function dogWalkerType(style, weight) {
     kind: 'solid', weight,
     half: { x: 0.42, z: 0.35 }, minY: 0, maxY: 2.5,
     move: 'walk',
-    sub: [{ dx: 0.95, dz: 0.35, half: { x: 0.45, z: 0.35 }, minY: 0, maxY: style === 'small' ? 0.5 : 0.75 }],
+    sub: [{ dx: 0.95, dz: 0.35, half: { x: 0.6, z: 0.45 }, minY: 0, maxY: style === 'small' ? 0.75 : 1.0 }],
   };
 }
 // Pedestrians are deliberately super tall (scale 1.3 ≈ a head above the
@@ -60,12 +60,12 @@ function pedType(opts, weight) {
 const TYPES = [
   // --- jumpables ---
   { build: makeBoulder,       kind: 'jump', weight: 3, half: { x: 0.85, z: 0.7 }, minY: 0, maxY: 0.85 },
-  { build: makeSandwichBoard, kind: 'jump', weight: 2, half: { x: 0.45, z: 0.4 }, minY: 0, maxY: 0.9 },
+  { build: makeSandwichBoard, kind: 'jump', weight: 2, half: { x: 0.6, z: 0.55 }, minY: 0, maxY: 1.05 },
   { build: makeDeliveryBoxes, kind: 'jump', weight: 2, half: { x: 0.55, z: 0.55 }, minY: 0, maxY: 0.95 },
   { build: makeBike,          kind: 'jump', weight: 2, half: { x: 0.65, z: 0.35 }, minY: 0, maxY: 1.0 },
-  { build: makeChair,         kind: 'jump', weight: 1, half: { x: 0.4, z: 0.4 },  minY: 0, maxY: 0.8 },
+  { build: makeChair,         kind: 'jump', weight: 1, half: { x: 0.5, z: 0.5 },  minY: 0, maxY: 1.0 },
   { build: makeTrashCan,      kind: 'jump', weight: 2, half: { x: 0.45, z: 0.45 }, minY: 0, maxY: 1.0 },
-  { build: makeNewsBox,       kind: 'jump', weight: 2, half: { x: 0.35, z: 0.35 }, minY: 0, maxY: 1.05 },
+  { build: makeNewsBox,       kind: 'jump', weight: 2, half: { x: 0.4, z: 0.4 }, minY: 0, maxY: 1.05 },
   { build: makeBarrier,       kind: 'jump', weight: 1, half: { x: 0.9, z: 0.35 }, minY: 0, maxY: 1.0 }, // construction, kept rare
   // --- dogs: almost always leashed to an owner, like real Church St ---
   dogWalkerType('black', 2), dogWalkerType('golden', 2),

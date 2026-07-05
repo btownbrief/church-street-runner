@@ -28,7 +28,7 @@ export async function loadHeadlines() {
 }
 
 export function isNewsEnabled() {
-  return localStorage.getItem('csr-news') === 'on';
+  return localStorage.getItem('csr-news') !== 'off'; // default on
 }
 export function setNewsEnabled(on) {
   localStorage.setItem('csr-news', on ? 'on' : 'off');
@@ -46,8 +46,14 @@ function drawBanner(text) {
   ctx.font = 'bold 34px system-ui, sans-serif';
   ctx.fillText('BTV', 38, 60);
   ctx.fillStyle = '#f3ede0';
-  ctx.font = '600 40px system-ui, sans-serif';
-  ctx.fillText(text.slice(0, 52), 176, 62);
+  // shrink font until the headline fits the banner
+  let size = 40;
+  ctx.font = `600 ${size}px system-ui, sans-serif`;
+  while (size > 22 && ctx.measureText(text).width > 820) {
+    size -= 2;
+    ctx.font = `600 ${size}px system-ui, sans-serif`;
+  }
+  ctx.fillText(text, 176, 48 + size * 0.35, 830);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -56,10 +62,11 @@ function drawBanner(text) {
 // A street-spanning news banner. Call banner.userData.nextHeadline() whenever
 // its chunk recycles to rotate through the feed.
 export function makeNewsBanner() {
+  // Plane's textured front is +z, which is exactly the side the player sees —
+  // no rotation, or the text reads mirrored.
   const mat = new THREE.MeshBasicMaterial({ map: drawBanner(headlines[0]), side: THREE.DoubleSide });
   const banner = new THREE.Mesh(new THREE.PlaneGeometry(13, 1.2), mat);
   banner.position.y = 5.4;
-  banner.rotation.y = Math.PI;
   banner.userData.nextHeadline = () => {
     idx = (idx + 1) % headlines.length;
     const old = mat.map;
