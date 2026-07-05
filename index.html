@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#a63d2f" />
+  <title>Church Street Runner</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #cfe0ea;
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    }
+    #app { position: fixed; inset: 0; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 14px 18px; pointer-events: none; z-index: 5;
+    }
+    .badge {
+      background: rgba(43, 26, 20, 0.72); color: #fff7ec;
+      border-radius: 14px; padding: 8px 14px;
+      font-weight: 700; font-size: 18px; letter-spacing: 0.5px;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      backdrop-filter: blur(4px);
+    }
+    .badge small { display: block; font-size: 10px; font-weight: 600; opacity: 0.75; text-transform: uppercase; letter-spacing: 1.5px; }
+
+    .panel {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 24px;
+      background: radial-gradient(ellipse at 50% 40%, rgba(24, 14, 10, 0.35), rgba(24, 14, 10, 0.78));
+      color: #fff7ec;
+      transition: opacity 0.25s ease;
+    }
+    .panel.hidden { opacity: 0; pointer-events: none; }
+    .panel h1 {
+      font-size: clamp(34px, 9vw, 64px); line-height: 1.02;
+      font-weight: 900; letter-spacing: -1px;
+      text-shadow: 0 3px 0 #7c2b1e, 0 8px 24px rgba(0,0,0,0.5);
+      color: #ffe8c9;
+    }
+    .panel h1 span { color: #ff9d68; }
+    .panel .sub {
+      margin-top: 10px; font-size: 15px; font-weight: 600;
+      color: #ffd9b0; opacity: 0.95;
+    }
+    .panel .tips {
+      margin-top: 22px; font-size: 13px; line-height: 1.9; font-weight: 500;
+      color: #f3e3d3; opacity: 0.9;
+      background: rgba(0,0,0,0.28); border-radius: 16px; padding: 12px 22px;
+    }
+    .panel .score-big { margin-top: 6px; font-size: clamp(44px, 12vw, 80px); font-weight: 900; color: #ffe8c9; }
+    .panel .best-line { font-size: 15px; font-weight: 700; color: #ffd9b0; margin-top: 2px; }
+    .panel .new-best { color: #7dff9b; }
+    button.cta {
+      margin-top: 28px; border: none; cursor: pointer;
+      font: inherit; font-size: 20px; font-weight: 800; letter-spacing: 0.5px;
+      color: #fff7ec; background: linear-gradient(#c9502f, #a63d2f);
+      padding: 16px 46px; border-radius: 999px;
+      box-shadow: 0 5px 0 #6f2417, 0 12px 24px rgba(0,0,0,0.4);
+      transition: transform 0.08s ease;
+    }
+    button.cta:active { transform: translateY(3px); box-shadow: 0 2px 0 #6f2417; }
+    .picker-label {
+      margin-top: 16px; font-size: 11px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: #ffd9b0; opacity: 0.8;
+    }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; max-width: 480px; }
+    .chip {
+      border: 2px solid rgba(255, 232, 201, 0.35); background: rgba(0,0,0,0.3);
+      color: #fff7ec; font: inherit; font-size: 14px; font-weight: 700;
+      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+    }
+    .chip.sel { background: #c9502f; border-color: #ffe8c9; }
+    .coin-line { margin-top: 6px; font-size: 16px; font-weight: 700; color: #ffe8c9; }
+    .hint { margin-top: 10px; font-size: 12px; color: #ffd9b0; opacity: 0.7; }
+    #powerBadge { min-width: 60px; text-align: center; }
+    .menu-chip { margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="hud">
+    <div class="badge"><small>Score</small><span id="score">0</span></div>
+    <div class="badge" id="powerBadge"><span id="power"></span></div>
+    <div class="badge"><small>🪙</small><span id="coins">0</span></div>
+    <div class="badge"><small>Best</small><span id="best">0</span></div>
+  </div>
+
+  <div id="start" class="panel">
+    <h1>CHURCH STREET<br /><span>RUNNER</span></h1>
+    <div class="sub">Burlington, Vermont · Marketplace dash</div>
+    <div class="picker-label">Runner</div>
+    <div class="chip-row" id="charRow"></div>
+    <div class="picker-label">Mode</div>
+    <div class="chip-row">
+      <button class="chip" id="easyBtn">🌤 Easy</button>
+      <button class="chip" id="hardBtn">🔥 Hard</button>
+      <button class="chip" id="newsBtn">📰 Local News: Off</button>
+      <button class="chip" id="muteBtn">🔊 Sound: On</button>
+    </div>
+    <div class="tips">
+      Swipe ◀ ▶ to change lanes · ▲ jump · ▼ slide<br />
+      First crash: the black dog finds you. Second: he catches you.<br />
+      <em>(arrow keys work too · Space to restart)</em>
+    </div>
+    <button class="cta" id="startBtn">RUN</button>
+  </div>
+
+  <div id="gameover" class="panel hidden">
+    <h1>THE DOG GOT YOU!</h1>
+    <div class="score-big" id="finalScore">0</div>
+    <div class="best-line" id="bestLine">Best: 0</div>
+    <div class="coin-line" id="coinLine"></div>
+    <button class="cta" id="restartBtn">RUN AGAIN</button>
+    <button class="chip menu-chip" id="menuBtn">🏠 Change Runner / Mode</button>
+    <div class="hint">press Space</div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
