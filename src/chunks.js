@@ -76,6 +76,12 @@ function chunkStorefront(rng) {
 // storefront variant with Big Joe + a busker performing
 function chunkStorefrontJazz(rng) {
   const g = chunkStorefront(rng);
+  if (isNewsEnabled()) {
+    const banner = makeNewsBanner(5.6);
+    banner.position.z = -4;
+    g.add(banner);
+    g.userData.onRecycle = () => banner.userData.nextHeadline();
+  }
   put(g, makeJoeBurrell(), -DECOR_X + 0.6, 1, Math.PI - 0.35); // Joe faces up the street toward the runner
   put(g, makeBusker(rng() < 0.5 ? 'sax' : 'violin'), DECOR_X - 0.6, -7, -0.8);
   // small audience
@@ -156,6 +162,14 @@ function chunkIntersection(rng) {
   }
   addLamps(g, -ROAD_W / 2 - 2.5);
   addLamps(g, ROAD_W / 2 + 2.5);
+
+  // banner strung across the intersection, like the Festival of Fools photos
+  if (isNewsEnabled()) {
+    const banner = makeNewsBanner(5.8);
+    banner.position.z = -ROAD_W / 2 - 1.5;
+    g.add(banner);
+    g.userData.onRecycle = () => banner.userData.nextHeadline();
+  }
 
   // ---- crossing cars (occasionally a parking-enforcement cart) ----
   const hazards = [];

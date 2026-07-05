@@ -1,6 +1,7 @@
-// Optional "Live Local News" banners. Modular: getHeadlines() first tries a
-// local /news.json (drop one in /public to feed real headlines — e.g. a small
-// cron that writes titles from an RSS feed), otherwise uses mock local flavor.
+// "Live Local News" banners fed by the Btown Brief beehiiv RSS.
+// news.json is produced by scripts/update-news.mjs (GitHub Actions, Mon & Fri):
+//   { headlines: [...], latest: { title, url }, updated: ISO }
+// (a plain array of headlines is also accepted for backwards compatibility).
 import * as THREE from 'three';
 
 const MOCK = [
@@ -15,16 +16,31 @@ const MOCK = [
 ];
 
 let headlines = [...MOCK];
+let latestEdition = { title: 'the latest Btown Brief', url: 'https://www.btownbrief.com/' };
 let idx = 0;
+const banners = []; // every banner in the scene, so we can refresh them all
 
 export async function loadHeadlines() {
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}news.json`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length) headlines = data.map(String);
+      if (Array.isArray(data) && data.length) {
+        headlines = data.map(String);
+      } else if (data && Array.isArray(data.headlines) && data.headlines.length) {
+        headlines = data.headlines.map(String);
+        if (data.latest?.url) latestEdition = data.latest;
+      }
+      // repaint any banners that were built before the feed arrived
+      let i = 0;
+      for (const b of banners) b.userData.setHeadline(headlines[i++ % headlines.length]);
+      idx = i % headlines.length;
     }
   } catch { /* offline / no feed — keep mock headlines */ }
+}
+
+export function getLatestEdition() {
+  return latestEdition;
 }
 
 export function isNewsEnabled() {
@@ -59,19 +75,24 @@ function drawBanner(text) {
   return tex;
 }
 
-// A street-spanning news banner. Call banner.userData.nextHeadline() whenever
-// its chunk recycles to rotate through the feed.
-export function makeNewsBanner() {
-  // Plane's textured front is +z, which is exactly the side the player sees —
-  // no rotation, or the text reads mirrored.
-  const mat = new THREE.MeshBasicMaterial({ map: drawBanner(headlines[0]), side: THREE.DoubleSide });
+// A street-spanning news banner. Its chunk calls userData.nextHeadline() on
+// recycle so the feed rotates as you run.
+export function makeNewsBanner(y = 5.4) {
+  // Plane's textured front is +z — the side the player sees. No rotation,
+  // or the text reads mirrored.
+  const mat = new THREE.MeshBasicMaterial({ map: drawBanner(headlines[idx % headlines.length]), side: THREE.DoubleSide });
   const banner = new THREE.Mesh(new THREE.PlaneGeometry(13, 1.2), mat);
-  banner.position.y = 5.4;
-  banner.userData.nextHeadline = () => {
-    idx = (idx + 1) % headlines.length;
+  banner.position.y = y;
+  banner.userData.setHeadline = (text) => {
     const old = mat.map;
-    mat.map = drawBanner(headlines[idx]);
+    mat.map = drawBanner(text);
     old.dispose();
   };
+  banner.userData.nextHeadline = () => {
+    idx = (idx + 1) % headlines.length;
+    banner.userData.setHeadline(headlines[idx]);
+  };
+  banners.push(banner);
+  idx = (idx + 1) % headlines.length; // stagger initial headlines across banners
   return banner;
 }

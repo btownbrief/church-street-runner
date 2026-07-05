@@ -26,6 +26,11 @@ const item = xml.match(/<item>.*?<content:encoded><!\[CDATA\[(.*?)\]\]><\/conten
 if (!item) throw new Error('no item content found in feed');
 const content = item[1];
 
+// latest edition title + link for the game-over "read the newsletter" button
+const itemHead = xml.match(/<item>(.*?)<content:encoded>/s)[1];
+const editionTitle = decode((itemHead.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/s) || [, 'the latest Btown Brief'])[1]);
+const editionUrl = decode((itemHead.match(/<link>(.*?)<\/link>/s) || [, 'https://www.btownbrief.com/'])[1]);
+
 // the "Local News" section, up to the next major heading
 const section = content.match(/<h2[^>]*>[^<]*Local News.*?<\/h2>(.*?)<h[12][^>]*>/s);
 if (!section) throw new Error('no Local News section found in latest edition');
@@ -44,8 +49,13 @@ for (const t of anchors) {
 }
 if (headlines.length < 3) throw new Error(`only ${headlines.length} headlines extracted — refusing to overwrite`);
 
-const json = JSON.stringify(headlines, null, 2) + '\n';
+const json = JSON.stringify({
+  headlines,
+  latest: { title: editionTitle, url: editionUrl },
+  updated: new Date().toISOString(),
+}, null, 2) + '\n';
 writeFileSync('docs/news.json', json);
 writeFileSync('public/news.json', json);
+console.log(`latest edition: ${editionTitle} — ${editionUrl}`);
 console.log(`wrote ${headlines.length} headlines:`);
 for (const h of headlines) console.log('  -', h);

@@ -177,10 +177,13 @@ export const DOG_STYLE_NAMES = Object.keys(DOG_STYLES);
 export function animateDogRun(dog, t, rate = 10) {
   const { legs, tail, phase } = dog.userData;
   if (!legs) return;
-  legs[0].rotation.x = Math.sin(t * rate + phase) * 0.7;
-  legs[1].rotation.x = Math.sin(t * rate + phase) * 0.7;
-  legs[2].rotation.x = -Math.sin(t * rate + phase) * 0.7;
-  legs[3].rotation.x = -Math.sin(t * rate + phase) * 0.7;
+  // the dog's body runs along its local X axis, so legs swing around Z
+  // (rotation.x would kick them out sideways)
+  const sw = Math.sin(t * rate + phase) * 0.7;
+  legs[0].rotation.z = sw;
+  legs[1].rotation.z = sw;
+  legs[2].rotation.z = -sw;
+  legs[3].rotation.z = -sw;
   if (tail) tail.rotation.z = 0.6 + Math.sin(t * rate * 1.3 + phase) * 0.25;
 }
 
@@ -269,7 +272,7 @@ export class AmbientPeople {
       if (i % 3 === 0) {
         dog = makeDog(DOG_STYLE_NAMES[i % DOG_STYLE_NAMES.length]);
         dog.position.set(0.3, 0, -0.9);
-        dog.rotation.y = -Math.PI / 2; // dog model faces +x; align with owner's walk
+        dog.rotation.y = Math.PI / 2; // dog model faces +x; align with owner's walk
         grp.add(dog);
         const leash = new THREE.Mesh(BOXG, MAT.ironBlack);
         leash.scale.set(0.015, 0.015, 1.0);
@@ -280,7 +283,8 @@ export class AmbientPeople {
       const side = i % 2 === 0 ? -1 : 1;
       const dir = Math.random() < 0.6 ? 1 : -1; // 1 = toward player (walks with world)
       grp.position.set(side * (5.0 + Math.random() * 1.0), 0, -20 - Math.random() * 120);
-      grp.rotation.y = dir === 1 ? 0 : Math.PI;
+      // person models face -z, so walking toward the player (+z) needs PI
+      grp.rotation.y = dir === 1 ? Math.PI : 0;
       this.scene.add(grp);
       this.walkers.push({ grp, person, dog, dir, side, speed: 0.8 + Math.random() * 0.9 });
     }

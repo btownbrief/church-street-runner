@@ -8,7 +8,7 @@ import { makeBrickTexture } from './props.js';
 import { AmbientPeople, makeDog, animateDogRun } from './npcs.js';
 import { Collectibles } from './collectibles.js';
 import { CHARACTERS, getSavedCharacter, saveCharacter } from './characters.js';
-import { loadHeadlines, isNewsEnabled, setNewsEnabled } from './news.js';
+import { loadHeadlines, isNewsEnabled, setNewsEnabled, getLatestEdition } from './news.js';
 import { sfx, unlock as unlockAudio, isMuted, setMuted } from './audio.js';
 
 // ------------------------------------------------------------ renderer
@@ -82,13 +82,20 @@ for (const x of [-3.4, 3.4]) {
 
 // ------------------------------------------------------------ world
 
+loadHeadlines().then(() => {
+  // point the game-over link at the newest edition
+  const ed = getLatestEdition();
+  const a = document.getElementById('newsletterLink');
+  a.href = ed.url;
+  a.textContent = `📰 Read "${ed.title}" →`;
+});
+
 const chunks = new ChunkManager(scene);
 const obstacles = new ObstacleManager(scene);
 let character = getSavedCharacter();
 const player = new Player(scene, character);
 const people = new AmbientPeople(scene, 10);
 const collectibles = new Collectibles(scene);
-loadHeadlines();
 
 const church = makeChurch();
 church.position.set(0, 0, -165);

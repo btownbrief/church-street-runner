@@ -13,6 +13,9 @@ export function bindInput({ left, right, up, down, anyKey }) {
   window.addEventListener('touchend', (e) => {
     if (!tracking) return;
     tracking = false;
+    // taps on UI buttons are handled by their own click handlers —
+    // don't also treat them as a swipe/restart gesture
+    if (e.target.closest?.('button, a')) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - sx;
     const dy = t.clientY - sy;

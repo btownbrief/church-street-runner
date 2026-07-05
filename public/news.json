@@ -1,18 +1,25 @@
-[
-  "Burlington Lands in the National Travel Spotlight",
-  "Vermont Green FC Women Make Their First Ever Playoff Run",
-  "Take a Revolutionary Road Trip for America's 250th",
-  "Champlain Parkway Opens After 61 Years",
-  "Inside a Storybook Home in the Old North End",
-  "Burlington Gears Up for Its July 3 America 250 Bash",
-  "State Program Fixes Housing for Hundreds of Farmworkers",
-  "Vermont's Fourth of July Gets Extra Sparkle for America 250",
-  "Two Waterbury Battery Firms Change Hands as Power Demand Surges",
-  "Vermont Rethinks Air Conditioning as Summers Heat Up",
-  "The Race for Chittenden County's Top Prosecutor Heats Up",
-  "Heat Strains Vermont Prisons Without Air Conditioning",
-  "Neighbors Frustrated by Slow Environmental Cleanups",
-  "Noah Kahan Fans Blamed for a Vanishing Road Sign",
-  "Utilities ask customers to ease up on electricity",
-  "Beachgoers flock to the waterfront as the heat wave arrives"
-]
+{
+  "headlines": [
+    "Burlington Lands in the National Travel Spotlight",
+    "Vermont Green FC Women Make Their First Ever Playoff Run",
+    "Take a Revolutionary Road Trip for America's 250th",
+    "Champlain Parkway Opens After 61 Years",
+    "Inside a Storybook Home in the Old North End",
+    "Burlington Gears Up for Its July 3 America 250 Bash",
+    "State Program Fixes Housing for Hundreds of Farmworkers",
+    "Vermont's Fourth of July Gets Extra Sparkle for America 250",
+    "Two Waterbury Battery Firms Change Hands as Power Demand Surges",
+    "Vermont Rethinks Air Conditioning as Summers Heat Up",
+    "The Race for Chittenden County's Top Prosecutor Heats Up",
+    "Heat Strains Vermont Prisons Without Air Conditioning",
+    "Neighbors Frustrated by Slow Environmental Cleanups",
+    "Noah Kahan Fans Blamed for a Vanishing Road Sign",
+    "Utilities ask customers to ease up on electricity",
+    "Beachgoers flock to the waterfront as the heat wave arrives"
+  ],
+  "latest": {
+    "title": "Friday, July 3rd (America's 250th!)",
+    "url": "https://www.btownbrief.com/p/friday-july-3rd-america-s-250th"
+  },
+  "updated": "2026-07-05T07:12:58.290Z"
+}

@@ -30,12 +30,14 @@ function dogWalkerType(style, weight) {
       g.add(owner);
       const dog = makeDog(style);
       dog.position.set(0.95, 0, 0.35);
-      dog.rotation.y = -Math.PI / 2; // face the direction of travel (+z)
+      // group is spawned facing the player (rotation.y = PI), so the dog's
+      // +x-built body needs +PI/2 to face the same way as its owner
+      dog.rotation.y = Math.PI / 2;
       g.add(dog);
-      const leash = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1), new THREE.MeshLambertMaterial({ color: 0x24211f }));
-      leash.scale.z = 1.15;
-      leash.position.set(0.65, 0.7, 0.15);
-      leash.rotation.set(0.35, 0, -0.9);
+      // leash: slack line from the owner's hand down to the dog's collar
+      const leash = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.025, 0.025), new THREE.MeshLambertMaterial({ color: 0x24211f }));
+      leash.position.set(0.5, 1.0, 0.18);
+      leash.rotation.set(0, -0.3, -0.55);
       g.add(leash);
       g.userData.walker = owner;
       g.userData.dog = dog;
@@ -44,7 +46,9 @@ function dogWalkerType(style, weight) {
     kind: 'solid', weight,
     half: { x: 0.42, z: 0.35 }, minY: 0, maxY: 2.5,
     move: 'walk',
-    sub: [{ dx: 0.95, dz: 0.35, half: { x: 0.6, z: 0.45 }, minY: 0, maxY: style === 'small' ? 0.75 : 1.0 }],
+    // group faces the player (rotation.y = PI), which mirrors the dog's
+    // local (+0.95, +0.35) offset to world (-0.95, -0.35)
+    sub: [{ dx: -0.95, dz: -0.35, half: { x: 0.6, z: 0.45 }, minY: 0, maxY: style === 'small' ? 0.75 : 1.0 }],
   };
 }
 // Pedestrians are deliberately super tall (scale 1.3 ≈ a head above the
@@ -154,7 +158,8 @@ export class ObstacleManager {
       slot.baseX = LANES[lanes[i]];
       slot.obj.position.set(slot.baseX, 0, z);
       if (slot.type.move === 'walk') {
-        slot.obj.rotation.y = 0; // pedestrians face the oncoming player
+        // person models are built facing -z, so PI turns them toward the player
+        slot.obj.rotation.y = Math.PI;
       } else if (slot.type.kind === 'slide') {
         slot.obj.rotation.y = Math.PI / 2;
       } else if (slot.type.escort) {
