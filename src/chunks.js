@@ -50,8 +50,9 @@ function addLamps(g, offset = 0) {
   }
 }
 
-// hang a news banner across the street in this chunk (no-op if news is off)
-function addNewsBanner(g, z, y = 5.6) {
+// hang a news banner across the street in this chunk (no-op if news is off);
+// high enough that the flight camera (cy ≈ 5.7 during jetpack) sees under it
+function addNewsBanner(g, z, y = 7.4) {
   if (!isNewsEnabled()) return;
   const banner = makeNewsBanner(y);
   banner.position.z = z;
@@ -170,7 +171,7 @@ function chunkIntersection(rng) {
   addLamps(g, ROAD_W / 2 + 2.5);
 
   // banner strung across the intersection, like the Festival of Fools photos
-  addNewsBanner(g, -ROAD_W / 2 - 1.5, 5.8);
+  addNewsBanner(g, -ROAD_W / 2 - 1.5, 7.6);
 
   // ---- crossing cars (occasionally a parking-enforcement cart) ----
   const hazards = [];

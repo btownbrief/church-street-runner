@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 
 const FEED = 'https://rss.beehiiv.com/feeds/1BT4mvZXMo.xml';
 const EDITIONS = 3;
-const MAX_HEADLINES = 30;
+const MAX_HEADLINES = 60; // roomy enough for all Local News items across 3 editions
 
 function decode(s) {
   return s

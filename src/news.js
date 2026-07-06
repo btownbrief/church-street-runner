@@ -77,7 +77,7 @@ function drawBanner(text) {
 
 // A street-spanning news banner. Its chunk calls userData.nextHeadline() on
 // recycle so the feed rotates as you run.
-export function makeNewsBanner(y = 5.4) {
+export function makeNewsBanner(y = 7.4) {
   // Plane's textured front is +z — the side the player sees. No rotation,
   // or the text reads mirrored.
   const mat = new THREE.MeshBasicMaterial({ map: drawBanner(headlines[idx % headlines.length]), side: THREE.DoubleSide });
