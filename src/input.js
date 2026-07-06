@@ -15,7 +15,7 @@ export function bindInput({ left, right, up, down, anyKey }) {
     tracking = false;
     // taps on UI buttons are handled by their own click handlers —
     // don't also treat them as a swipe/restart gesture
-    if (e.target.closest?.('button, a')) return;
+    if (e.target.closest?.('button, a, input')) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - sx;
     const dy = t.clientY - sy;
@@ -26,6 +26,8 @@ export function bindInput({ left, right, up, down, anyKey }) {
   }, { passive: true });
 
   window.addEventListener('keydown', (e) => {
+    // don't hijack keys while typing (e.g. the leaderboard name field)
+    if (e.target.closest?.('input, textarea')) return;
     switch (e.code) {
       case 'ArrowLeft': case 'KeyA': left(); break;
       case 'ArrowRight': case 'KeyD': right(); break;

@@ -10,6 +10,9 @@ import { Collectibles } from './collectibles.js';
 import { CHARACTERS, getSavedCharacter, saveCharacter } from './characters.js';
 import { loadHeadlines, isNewsEnabled, setNewsEnabled, getLatestEdition } from './news.js';
 import { sfx, unlock as unlockAudio, isMuted, setMuted } from './audio.js';
+import {
+  lbEnabled, getName, submitScore, renamePlayer, fetchTop, monthLabel, playerId,
+} from './leaderboard.js';
 
 // ------------------------------------------------------------ renderer
 
@@ -125,6 +128,8 @@ const MODES = {
 };
 let modeName = localStorage.getItem('csr-mode') || 'easy';
 
+const COIN_POINTS = 10; // score bonus per coin collected
+
 let state = 'ready'; // ready | running | over
 let speed = MODES[modeName].base;
 let score = 0;
@@ -193,12 +198,104 @@ function gameOver() {
     localStorage.setItem('csr-best', String(best));
   }
   finalScoreEl.textContent = s;
-  coinLineEl.textContent = `🪙 ${coins} collected`;
+  coinLineEl.textContent = `🪙 ${coins} collected · +${coins * COIN_POINTS} pts`;
   bestLineEl.textContent = isBest ? 'NEW BEST!' : `Best: ${Math.floor(best)}`;
   bestLineEl.className = isBest ? 'best-line new-best' : 'best-line';
   bestEl.textContent = Math.floor(best);
   setTimeout(() => overPanel.classList.remove('hidden'), 500);
+  updateLeaderboard(s);
 }
+
+// ------------------------------------------------------------ leaderboard
+
+const lbBox = $('lb'), lbList = $('lbList'), lbStatus = $('lbStatus');
+const lbForm = $('lbForm'), lbNameInput = $('lbNameInput');
+const lbThisBtn = $('lbThisBtn'), lbLastBtn = $('lbLastBtn'), lbRenameBtn = $('lbRenameBtn');
+let lbMonthOffset = 0;
+
+if (lbEnabled()) {
+  lbBox.classList.remove('hidden');
+  lbThisBtn.textContent = `🏆 ${monthLabel(0)}`;
+  lbLastBtn.textContent = monthLabel(-1);
+}
+
+async function updateLeaderboard(s) {
+  if (!lbEnabled()) return;
+  if (!getName()) {
+    // first run: ask for a name before joining the board
+    lbForm.classList.remove('hidden');
+    lbRenameBtn.classList.add('hidden');
+    lbStatus.textContent = 'Pick a name to join the monthly leaderboard!';
+    lbList.innerHTML = '';
+    lbForm.dataset.pendingScore = String(s);
+    return;
+  }
+  try {
+    await submitScore(s);
+  } catch { /* offline — still try to show the board */ }
+  renderBoard();
+}
+
+async function renderBoard() {
+  lbForm.classList.add('hidden');
+  lbRenameBtn.classList.remove('hidden');
+  lbStatus.textContent = 'Loading…';
+  try {
+    const rows = await fetchTop(lbMonthOffset);
+    const me = playerId();
+    lbList.innerHTML = '';
+    rows.slice(0, 10).forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.player_id === me) li.className = 'me';
+      const medal = ['🥇', '🥈', '🥉'][i];
+      li.innerHTML = `<span class="rank">${medal || i + 1}</span><span class="nm"></span><span class="sc"></span>`;
+      li.querySelector('.nm').textContent = r.name;
+      li.querySelector('.sc').textContent = r.score;
+      lbList.appendChild(li);
+    });
+    const myRank = rows.findIndex((r) => r.player_id === me);
+    lbStatus.textContent = rows.length === 0
+      ? 'No scores yet this month — be the first!'
+      : myRank >= 0 ? `You're #${myRank + 1} of ${rows.length} this month` : '';
+  } catch {
+    lbStatus.textContent = 'Leaderboard unavailable (offline?)';
+  }
+}
+
+$('lbSaveBtn').addEventListener('click', async () => {
+  const name = lbNameInput.value.trim();
+  if (!name) { lbNameInput.focus(); return; }
+  sfx.click();
+  const pending = Number(lbForm.dataset.pendingScore || 0);
+  lbForm.dataset.pendingScore = '';
+  try {
+    await renamePlayer(name); // saves locally + updates any existing rows
+    if (pending > 0) await submitScore(pending);
+  } catch { /* offline */ }
+  renderBoard();
+});
+lbNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('lbSaveBtn').click();
+});
+lbRenameBtn.addEventListener('click', () => {
+  sfx.click();
+  lbNameInput.value = getName();
+  lbForm.classList.remove('hidden');
+  lbRenameBtn.classList.add('hidden');
+  lbNameInput.focus();
+});
+lbThisBtn.addEventListener('click', () => {
+  lbMonthOffset = 0;
+  lbThisBtn.classList.add('sel');
+  lbLastBtn.classList.remove('sel');
+  renderBoard();
+});
+lbLastBtn.addEventListener('click', () => {
+  lbMonthOffset = -1;
+  lbLastBtn.classList.add('sel');
+  lbThisBtn.classList.remove('sel');
+  renderBoard();
+});
 
 $('startBtn').addEventListener('click', startGame);
 $('restartBtn').addEventListener('click', startGame);
@@ -290,6 +387,7 @@ bindInput({
   anyKey: () => tryRestart(),
 });
 window.addEventListener('keydown', (e) => {
+  if (e.target.closest?.('input, textarea')) return;
   if (e.code === 'Space') tryRestart();
 });
 
@@ -316,6 +414,9 @@ function update(dt, t) {
     chunks.update(dz, dt);
     obstacles.update(dz, dt, t, difficulty);
     people.update(dz, dt, t);
+    // capture BEFORE player.update ticks the timer down, or the frame where
+    // flight ends is missed and the jetpack loop never stops
+    const wasFlying = player.flying > 0;
     player.update(dt, speed);
 
     brickTex.offset.y += dz / BRICK_WORLD;
@@ -324,14 +425,13 @@ function update(dt, t) {
 
     // collectibles + power-ups
     if (magnetT > 0) magnetT -= dt;
-    const wasFlying = player.flying > 0;
     // flying doubles as a magnet: soar over obstacles AND vacuum up coins
     const attract = magnetT > 0 || player.flying > 0;
     const got = collectibles.update(dz, dt, t, player, attract, obstacles);
     for (const it of got) {
       if (it.cfg.power === 'magnet') { magnetT = 7; sfx.magnetPickup(); }
       else if (it.cfg.power === 'fly') { player.startFlight(4.5); sfx.bonus(); sfx.jetpackPickup(); }
-      else { coins += it.cfg.value; sfx.coin(); }
+      else { coins += it.cfg.value; score += it.cfg.value * COIN_POINTS; sfx.coin(); }
     }
     if (wasFlying && player.flying <= 0) sfx.jetpackEnd();
     if (magnetT <= 0 && magnetT > -dt * 2) sfx.magnetEnd();

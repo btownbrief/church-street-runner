@@ -104,7 +104,11 @@ export function makePerson(opts = {}) {
   if (opts.basketball) {
     armR.rotation.x = -0.35;
     armR.rotation.z = -0.5;
-    g.add(mesh(SPH, m(0xd2691e), 0.17, 0.17, 0.17, 0.48, 0.95, 0));
+    const ball = mesh(SPH, m(0xd2691e), 0.17, 0.17, 0.17, 0.48, 0.95, 0);
+    g.add(ball);
+    // dribbled by animateWalk: the ball bounces hand ↔ bricks, arm pumps
+    g.userData.ball = ball;
+    g.userData.ballArm = armR;
   }
 
   g.scale.setScalar(s);
@@ -121,6 +125,15 @@ export function animateWalk(person, t, rate = 7) {
   L.legR.rotation.x = -sw;
   if (L.armL.rotation.x > -0.9) L.armL.rotation.x = -sw * 0.7;
   if (L.armR.rotation.x > -0.9) L.armR.rotation.x = sw * 0.7;
+  const ball = person.userData.ball;
+  if (ball) {
+    // dribble: |sin| gives a sharp bounce off the bricks; the hand rides
+    // the ball down and flicks back up
+    const d = Math.abs(Math.sin(t * (rate * 1.6) + person.userData.phase));
+    ball.position.y = 0.17 + d * 0.72; // 0.17 = resting on the ground
+    person.userData.ballArm.rotation.x = -0.15 - d * 0.55;
+    person.userData.ballArm.rotation.z = -0.45;
+  }
 }
 
 export function makeSeatedPerson(opts = {}) {
