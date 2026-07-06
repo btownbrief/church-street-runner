@@ -128,7 +128,7 @@ const MODES = {
 };
 let modeName = localStorage.getItem('csr-mode') || 'easy';
 
-const COIN_POINTS = 10; // score bonus per coin collected
+const COIN_POINTS = 3; // score bonus per coin collected
 
 let state = 'ready'; // ready | running | over
 let speed = MODES[modeName].base;
