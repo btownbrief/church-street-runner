@@ -102,8 +102,10 @@ export function makePerson(opts = {}) {
     g.add(fro);
   }
   if (opts.basketball) {
-    armR.rotation.x = -0.35;
-    armR.rotation.z = -0.5;
+    // arm tilts OUTWARD (+z rot on the right arm) so the hand hangs over the
+    // ball at x≈0.48: shoulder 0.32 + armlen 0.48 · sin(0.35)
+    armR.rotation.x = -0.2;
+    armR.rotation.z = 0.35;
     const ball = mesh(SPH, m(0xd2691e), 0.17, 0.17, 0.17, 0.48, 0.95, 0);
     g.add(ball);
     // dribbled by animateWalk: the ball bounces hand ↔ bricks, arm pumps
@@ -131,8 +133,10 @@ export function animateWalk(person, t, rate = 7) {
     // the ball down and flicks back up
     const d = Math.abs(Math.sin(t * (rate * 1.6) + person.userData.phase));
     ball.position.y = 0.17 + d * 0.72; // 0.17 = resting on the ground
-    person.userData.ballArm.rotation.x = -0.15 - d * 0.55;
-    person.userData.ballArm.rotation.z = -0.45;
+    // hand rides the ball: arm straight down (hand lowest) when the ball is
+    // at the top of its bounce, lifting slightly as it drops away
+    person.userData.ballArm.rotation.x = -0.05 - (1 - d) * 0.4;
+    person.userData.ballArm.rotation.z = 0.35; // keep the hand out over the ball
   }
 }
 
