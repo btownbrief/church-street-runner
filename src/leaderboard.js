@@ -8,8 +8,8 @@
 // boards roll over monthly and past months stay stored ("cemented").
 
 // >>> Paste your Supabase project values here (Dashboard → Settings → API) <<<
-const SUPABASE_URL = '';      // e.g. 'https://abcdefgh.supabase.co'
-const SUPABASE_ANON_KEY = ''; // the long "anon / public" key (safe to ship)
+const SUPABASE_URL = 'https://jnouvwxomrcffqwilqkq.supabase.co/';      // e.g. 'https://abcdefgh.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_RkMJQopffWlV6DSwCRkndQ_Xw6GJMf3'; // the long "anon / public" key (safe to ship)
 
 const GAME = 'church-street-runner';
 
@@ -34,13 +34,13 @@ export function getName() { return localStorage.getItem('btown-player-name') || 
 export function setName(n) { localStorage.setItem('btown-player-name', n.trim().slice(0, 20)); }
 
 async function rpc(fn, args) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+  const headers = { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
+  // legacy JWT-style anon keys also go in the Authorization header;
+  // new sb_publishable_ keys must not (they aren't bearer tokens)
+  if (SUPABASE_ANON_KEY.startsWith('eyJ')) headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
+  const res = await fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/rpc/${fn}`, {
     method: 'POST',
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(args),
   });
   if (!res.ok) throw new Error(`${fn} failed: ${res.status}`);
