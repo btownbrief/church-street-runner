@@ -117,10 +117,13 @@ scene.add(chaser);
 // ------------------------------------------------------------ game state
 
 const $ = (id) => document.getElementById(id);
-const scoreEl = $('score'), bestEl = $('best'), coinsEl = $('coins');
+const scoreEl = $('score'), bestEl = $('best'), coinsEl = $('coins'), livesEl = $('lives');
 const startPanel = $('start'), overPanel = $('gameover');
 const finalScoreEl = $('finalScore'), bestLineEl = $('bestLine'), coinLineEl = $('coinLine');
-const powerEl = $('power');
+const powerEl = $('power'), livesBadgeEl = $('livesBadge');
+const effectsEl = $('effects'), impactFlashEl = $('impactFlash'), calloutEl = $('callout');
+const bestConfettiEl = $('bestConfetti');
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const MODES = {
   easy: { base: 11, accel: 0.42, max: 24 },
@@ -143,10 +146,180 @@ let magnetT = 0;
 let shakeT = 0;
 let overAt = 0;
 let dogLunge = 0;
+let nearMissStreak = 0;
+let nearCandidates = new Map();
+let passedNearMisses = new Set();
+let effectRunId = 0;
+let liveParticles = 0;
+let calloutToken = 0;
+let scorePopToken = 0;
+let impactToken = 0;
+const effectTimers = new Set();
+const MAX_PARTICLES = 40;
+
+function later(fn, delay) {
+  const id = effectRunId;
+  const timer = window.setTimeout(() => {
+    effectTimers.delete(timer);
+    if (id === effectRunId) fn();
+  }, delay);
+  effectTimers.add(timer);
+}
+
+function clearRunEffects() {
+  effectRunId += 1;
+  for (const timer of effectTimers) window.clearTimeout(timer);
+  effectTimers.clear();
+  effectsEl.querySelectorAll('.transient-effect').forEach((node) => node.remove());
+  bestConfettiEl.replaceChildren();
+  liveParticles = 0;
+  calloutToken += 1;
+  scorePopToken += 1;
+  impactToken += 1;
+  calloutEl.classList.remove('active');
+  calloutEl.textContent = '';
+  impactFlashEl.classList.remove('active');
+  scoreEl.classList.remove('score-pop');
+  livesBadgeEl.classList.remove('hit');
+  bestLineEl.classList.remove('fanfare');
+  nearCandidates = new Map();
+  passedNearMisses = new Set();
+}
+
+function screenPoint(position) {
+  const point = position.clone().project(camera);
+  return {
+    x: (point.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-point.y * 0.5 + 0.5) * window.innerHeight,
+  };
+}
+
+function spawnParticle(container, className, x, y, duration, styles = {}, text = '', allowReducedMotion = false) {
+  if ((motionQuery.matches && !allowReducedMotion) || liveParticles >= MAX_PARTICLES) return;
+  const node = document.createElement('span');
+  node.className = `particle transient-effect ${className}`;
+  node.textContent = text;
+  node.setAttribute('aria-hidden', 'true');
+  node.style.setProperty('--x', typeof x === 'number' ? `${x}px` : x);
+  node.style.setProperty('--y', typeof y === 'number' ? `${y}px` : y);
+  for (const [name, value] of Object.entries(styles)) node.style.setProperty(name, value);
+  container.appendChild(node);
+  liveParticles += 1;
+  later(() => {
+    if (!node.isConnected) return;
+    node.remove();
+    liveParticles = Math.max(0, liveParticles - 1);
+  }, duration);
+}
+
+function popScore() {
+  const token = ++scorePopToken;
+  scoreEl.classList.remove('score-pop');
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('score-pop');
+  later(() => {
+    if (token === scorePopToken) scoreEl.classList.remove('score-pop');
+  }, 220);
+}
+
+function showCallout(text) {
+  const token = ++calloutToken;
+  calloutEl.textContent = text;
+  calloutEl.classList.remove('active');
+  void calloutEl.offsetWidth;
+  calloutEl.classList.add('active');
+  later(() => {
+    if (token !== calloutToken) return;
+    calloutEl.classList.remove('active');
+    calloutEl.textContent = '';
+  }, 760);
+}
+
+function showCoinPickup(points, position) {
+  const { x, y } = screenPoint(position);
+  spawnParticle(effectsEl, 'float-score', x, y - 12, 260, {}, `+${points}`, true);
+  const offsets = [[-24, -20], [22, -24], [-18, 20], [24, 16]];
+  for (const [dx, dy] of offsets) {
+    spawnParticle(effectsEl, 'sparkle', x, y, 260, {
+      '--dx': `${dx}px`,
+      '--dy': `${dy}px`,
+    }, '✦');
+  }
+  popScore();
+}
+
+function showCrashImpact() {
+  const token = ++impactToken;
+  livesBadgeEl.classList.remove('hit');
+  impactFlashEl.classList.remove('active');
+  void livesBadgeEl.offsetWidth;
+  livesBadgeEl.classList.add('hit');
+  if (!motionQuery.matches) impactFlashEl.classList.add('active');
+  later(() => {
+    if (token !== impactToken) return;
+    livesBadgeEl.classList.remove('hit');
+    impactFlashEl.classList.remove('active');
+  }, 440);
+
+  const { x, y } = screenPoint(new THREE.Vector3(player.x, player.y + 0.9, player.zOffset));
+  const colors = ['#8a4f2c', '#d6b58b', '#5b4336'];
+  for (let i = 0; i < 10; i++) {
+    spawnParticle(effectsEl, 'debris', x, y, 500, {
+      '--dx': `${Math.round((Math.random() - 0.5) * 110)}px`,
+      '--dy': `${Math.round(-25 - Math.random() * 70)}px`,
+      '--rot': `${Math.round((Math.random() - 0.5) * 480)}deg`,
+      '--color': colors[i % colors.length],
+    });
+  }
+}
+
+function celebrateBest() {
+  bestLineEl.classList.add('fanfare');
+  sfx.best();
+  const colors = ['#c9502f', '#ffe8c9', '#7dff9b', '#e8b23a'];
+  for (let i = 0; i < 24; i++) {
+    spawnParticle(bestConfettiEl, 'confetti', `${5 + Math.random() * 90}%`, `${Math.random() * 12}%`, 1200, {
+      '--dx': `${Math.round((Math.random() - 0.5) * 120)}px`,
+      '--dy': `${Math.round(window.innerHeight * (0.55 + Math.random() * 0.35))}px`,
+      '--rot': `${Math.round((Math.random() - 0.5) * 900)}deg`,
+      '--color': colors[i % colors.length],
+    });
+  }
+}
+
+function confirmNearMiss(obstacle) {
+  passedNearMisses.add(obstacle);
+  nearMissStreak = Math.min(3, nearMissStreak + 1);
+  const bonus = nearMissStreak * 5;
+  score += bonus;
+  scoreEl.textContent = Math.floor(score);
+  popScore();
+  showCallout(`CLOSE ONE! +${bonus} · ×${nearMissStreak}`);
+  sfx.nearMiss();
+}
+
+function updateNearMisses(pz) {
+  for (const obstacle of passedNearMisses) {
+    if (!obstacle.active) passedNearMisses.delete(obstacle);
+  }
+  for (const [obstacle, id] of nearCandidates) {
+    if (id !== effectRunId || !obstacle.active) {
+      nearCandidates.delete(obstacle);
+      continue;
+    }
+    const subClearance = obstacle.type.sub?.map((part) => part.half.z + 0.52 - part.dz) || [];
+    const clearance = Math.max(obstacle.type.half.z + 0.52, ...subClearance);
+    if (obstacle.obj.position.z - pz > clearance) {
+      nearCandidates.delete(obstacle);
+      confirmNearMiss(obstacle);
+    }
+  }
+}
 
 function startGame() {
   unlockAudio();
   sfx.stopLoops();
+  clearRunEffects();
   chunks.reset();
   obstacles.reset();
   collectibles.reset();
@@ -156,6 +329,7 @@ function startGame() {
   score = 0;
   coins = 0;
   lives = 2;
+  nearMissStreak = 0;
   invuln = 0;
   magnetT = 0;
   dogLunge = 0;
@@ -164,12 +338,19 @@ function startGame() {
   startPanel.classList.add('hidden');
   overPanel.classList.add('hidden');
   powerEl.textContent = '';
+  scoreEl.textContent = '0';
+  coinsEl.textContent = '0';
+  livesEl.textContent = String(lives);
 }
 
 function onHit() {
   if (invuln > 0 || player.flying > 0) return;
   lives -= 1;
-  shakeT = 0.4;
+  livesEl.textContent = String(lives);
+  nearMissStreak = 0;
+  nearCandidates.clear();
+  shakeT = motionQuery.matches ? 0 : 0.4;
+  showCrashImpact();
   sfx.hit();
   if (lives > 0) {
     // first crash: the black dog picks up your scent
@@ -187,12 +368,12 @@ function onHit() {
 function gameOver() {
   state = 'over';
   sfx.stopLoops();
-  if (chaser.visible) sfx.bark();
-  sfx.gameover();
-  overAt = performance.now();
-  dogLunge = chaser.visible ? 0.45 : 0;
   const s = Math.floor(score);
   const isBest = s > best;
+  if (chaser.visible) sfx.bark();
+  if (!isBest) sfx.gameover();
+  overAt = performance.now();
+  dogLunge = chaser.visible ? 0.45 : 0;
   if (isBest) {
     best = s;
     localStorage.setItem('csr-best', String(best));
@@ -202,7 +383,8 @@ function gameOver() {
   bestLineEl.textContent = isBest ? 'NEW BEST!' : `Best: ${Math.floor(best)}`;
   bestLineEl.className = isBest ? 'best-line new-best' : 'best-line';
   bestEl.textContent = Math.floor(best);
-  setTimeout(() => overPanel.classList.remove('hidden'), 500);
+  overPanel.classList.remove('hidden');
+  if (isBest) celebrateBest();
   updateLeaderboard(s);
 }
 
@@ -304,6 +486,7 @@ $('menuBtn').addEventListener('click', () => {
   unlockAudio();
   sfx.click();
   sfx.stopLoops();
+  clearRunEffects();
   state = 'ready';
   chaser.visible = false;
   player.reset();
@@ -311,10 +494,12 @@ $('menuBtn').addEventListener('click', () => {
   startPanel.classList.remove('hidden');
 });
 // sound toggle
-const muteBtn = $('muteBtn');
+const muteBtn = $('mute');
 function paintMute() {
-  muteBtn.textContent = isMuted() ? '🔇 Sound: Off' : '🔊 Sound: On';
-  muteBtn.classList.toggle('sel', !isMuted());
+  const muted = isMuted();
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  muteBtn.setAttribute('aria-label', muted ? 'Turn sound on' : 'Mute sound');
+  muteBtn.title = muted ? 'Turn sound on' : 'Mute sound';
 }
 paintMute();
 muteBtn.addEventListener('click', () => {
@@ -428,10 +613,23 @@ function update(dt, t) {
     // flying doubles as a magnet: soar over obstacles AND vacuum up coins
     const attract = magnetT > 0 || player.flying > 0;
     const got = collectibles.update(dz, dt, t, player, attract, obstacles);
+    let pickupPoints = 0;
+    let pickupPosition = null;
     for (const it of got) {
       if (it.cfg.power === 'magnet') { magnetT = 7; sfx.magnetPickup(); }
       else if (it.cfg.power === 'fly') { player.startFlight(4.5); sfx.bonus(); sfx.jetpackPickup(); }
-      else { coins += it.cfg.value; score += it.cfg.value * COIN_POINTS; sfx.coin(); }
+      else {
+        const points = it.cfg.value * COIN_POINTS;
+        coins += it.cfg.value;
+        score += points;
+        pickupPoints += points;
+        pickupPosition ||= it.obj.position.clone();
+      }
+    }
+    if (pickupPoints > 0) {
+      sfx.coin();
+      showCoinPickup(pickupPoints, pickupPosition);
+      scoreEl.textContent = Math.floor(score);
     }
     if (wasFlying && player.flying <= 0) sfx.jetpackEnd();
     if (magnetT <= 0 && magnetT > -dt * 2) sfx.magnetEnd();
@@ -450,9 +648,18 @@ function update(dt, t) {
     // collisions (skip while flying or invulnerable)
     if (invuln <= 0 && player.flying <= 0) {
       const pz = player.zOffset;
-      const hit = obstacles.checkCollision(player.x, player.bottom, player.top, 0.32, 0.3, pz)
-        || chunks.checkVehicleHit(player.x, player.bottom, player.top, pz);
-      if (hit) onHit();
+      const obstacleHit = obstacles.checkCollision(player.x, player.bottom, player.top, 0.32, 0.3, pz);
+      const vehicleHit = chunks.checkVehicleHit(player.x, player.bottom, player.top, pz);
+      if (obstacleHit || vehicleHit) {
+        if (obstacleHit) nearCandidates.delete(obstacleHit);
+        onHit();
+      } else {
+        const nearby = obstacles.checkCollision(
+          player.x, player.bottom - 0.45, player.top + 0.55, 0.62, 0.52, pz
+        );
+        if (nearby && !passedNearMisses.has(nearby)) nearCandidates.set(nearby, effectRunId);
+        updateNearMisses(pz);
+      }
     }
 
     // the black dog stays on your heels
@@ -477,11 +684,13 @@ function update(dt, t) {
     cy += Math.sin(t * 9) * 0.03;
     if (player.flying > 0) cy += player.y * 0.35;
   }
-  if (shakeT > 0) {
+  if (shakeT > 0 && !motionQuery.matches) {
     shakeT -= dt;
     const s = shakeT * 0.5;
     cx += (Math.random() - 0.5) * s;
     cy += (Math.random() - 0.5) * s;
+  } else if (motionQuery.matches) {
+    shakeT = 0;
   }
   camera.position.set(cx, cy, cz);
   camera.lookAt(cx * 0.6, 2.2, -20);
@@ -505,6 +714,7 @@ window.__csr = {
   get speed() { return speed; },
   get lives() { return lives; },
   get coins() { return coins; },
+  get nearMissStreak() { return nearMissStreak; },
   set mode(mn) { modeName = mn; },
   player, obstacles, chunks, collectibles,
 };

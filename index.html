@@ -43,7 +43,7 @@
 
     #hud {
       position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0;
-      display: flex; justify-content: space-between; align-items: flex-start;
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
       padding: 14px 18px; pointer-events: none; z-index: 5;
     }
     .badge {
@@ -54,6 +54,56 @@
       backdrop-filter: blur(4px);
     }
     .badge small { display: block; font-size: 10px; font-weight: 600; opacity: 0.75; text-transform: uppercase; letter-spacing: 1.5px; }
+    .badge span { display: inline-block; }
+    #livesBadge.hit { animation: lives-hit 0.42s ease-out; }
+    #score.score-pop { animation: score-pop 0.2s ease-out; }
+
+    #mute {
+      position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom));
+      z-index: 20; width: 46px; height: 46px; border: 2px solid rgba(255,232,201,0.55);
+      border-radius: 50%; background: rgba(43,26,20,0.78); color: #fff7ec;
+      font-size: 20px; cursor: pointer; backdrop-filter: blur(4px);
+      box-shadow: 0 3px 12px rgba(0,0,0,0.28);
+    }
+    #mute:focus-visible { outline: 3px solid #ffe8c9; outline-offset: 2px; }
+
+    #effects {
+      position: fixed; inset: 0; z-index: 12; overflow: hidden;
+      pointer-events: none;
+    }
+    #impactFlash {
+      position: absolute; inset: 0; opacity: 0;
+      background: rgba(183, 34, 34, 0.34);
+    }
+    #impactFlash.active { animation: impact-flash 0.32s ease-out; }
+    #callout {
+      position: absolute; top: 24%; left: 50%; transform: translateX(-50%);
+      min-width: max-content; padding: 8px 15px; border-radius: 999px;
+      background: rgba(43,26,20,0.82); color: #ffe8c9;
+      font-size: clamp(17px, 5vw, 25px); font-weight: 900; letter-spacing: 0.5px;
+      text-shadow: 0 2px 0 #7c2b1e; opacity: 0;
+    }
+    #callout.active { animation: callout-pop 0.72s ease-out forwards; }
+    .float-score {
+      position: absolute; transform: translate(-50%, -50%);
+      color: #fff2a8; font-size: 20px; font-weight: 900;
+      text-shadow: 0 2px 2px rgba(80,35,10,0.8);
+      animation: float-score 0.24s ease-out forwards;
+    }
+    .particle {
+      position: absolute; left: var(--x); top: var(--y);
+      pointer-events: none;
+    }
+    .sparkle {
+      color: #fff4a8; font-size: 16px; line-height: 1;
+      text-shadow: 0 0 5px #ffcb46;
+      animation: sparkle 0.24s ease-out forwards;
+    }
+    .debris {
+      width: 8px; height: 6px; border-radius: 2px;
+      background: var(--color);
+      animation: debris 0.48s ease-out forwards;
+    }
 
     .panel {
       position: fixed; inset: 0; z-index: 10;
@@ -83,6 +133,15 @@
     .panel .score-big { margin-top: 6px; font-size: clamp(44px, 12vw, 80px); font-weight: 900; color: #ffe8c9; }
     .panel .best-line { font-size: 15px; font-weight: 700; color: #ffd9b0; margin-top: 2px; }
     .panel .new-best { color: #7dff9b; }
+    .panel .new-best.fanfare { animation: best-pulse 0.72s ease-in-out 2; }
+    #bestConfetti {
+      position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+    }
+    .confetti {
+      width: 9px; height: 15px; border-radius: 2px;
+      background: var(--color);
+      animation: confetti-fall 1.15s ease-out forwards;
+    }
     button.cta {
       margin-top: 28px; border: none; cursor: pointer;
       font: inherit; font-size: 20px; font-weight: 800; letter-spacing: 0.5px;
@@ -136,6 +195,61 @@
     #powerBadge { min-width: 60px; text-align: center; }
     .menu-chip { margin-top: 16px; }
     a.menu-chip { text-decoration: none; display: inline-block; background: rgba(232, 178, 58, 0.18); border-color: rgba(232, 178, 58, 0.6); }
+
+    @keyframes score-pop {
+      45% { transform: scale(1.25); color: #fff2a8; }
+    }
+    @keyframes lives-hit {
+      35% { transform: scale(1.2); background: rgba(154,25,25,0.9); }
+    }
+    @keyframes impact-flash {
+      0%, 35% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes callout-pop {
+      0% { opacity: 0; transform: translateX(-50%) scale(0.82); }
+      18%, 72% { opacity: 1; transform: translateX(-50%) scale(1); }
+      100% { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+    }
+    @keyframes float-score {
+      0% { opacity: 0; transform: translate(-50%, -35%) scale(0.8); }
+      25% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -120%) scale(1.05); }
+    }
+    @keyframes sparkle {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(0); }
+      35% { opacity: 1; }
+      100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(90deg); }
+    }
+    @keyframes debris {
+      0% { opacity: 1; transform: translate(-50%, -50%) rotate(0); }
+      100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); }
+    }
+    @keyframes best-pulse {
+      50% { transform: scale(1.22); text-shadow: 0 0 18px rgba(125,255,155,0.85); }
+    }
+    @keyframes confetti-fall {
+      0% { opacity: 0; transform: translate(-50%, -20px) rotate(0); }
+      12% { opacity: 1; }
+      100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(var(--rot)); }
+    }
+    @media (max-width: 600px) {
+      #hud { padding: 10px 8px; gap: 4px; }
+      .badge { padding: 7px 9px; border-radius: 11px; font-size: 16px; }
+      .badge small { font-size: 8px; letter-spacing: 1px; }
+      #powerBadge { min-width: 42px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .panel, button.cta { transition: none; }
+      #score.score-pop, #livesBadge.hit, #impactFlash.active, .float-score,
+      .sparkle, .debris, .panel .new-best.fanfare, .confetti { animation: none; }
+      #score.score-pop { color: #fff2a8; }
+      #livesBadge.hit { background: rgba(154,25,25,0.9); }
+      #callout.active {
+        animation: none; opacity: 1; transform: translateX(-50%);
+        border: 2px solid #ffe8c9;
+      }
+    }
   </style>
 </head>
 <body>
@@ -143,9 +257,17 @@
 
   <div id="hud">
     <div class="badge"><small>Score</small><span id="score">0</span></div>
+    <div class="badge" id="livesBadge"><small>Lives</small><span id="lives">2</span></div>
     <div class="badge" id="powerBadge"><span id="power"></span></div>
     <div class="badge"><small>🪙</small><span id="coins">0</span></div>
     <div class="badge"><small>Best</small><span id="best">0</span></div>
+  </div>
+
+  <button id="mute" type="button" aria-label="Mute sound" title="Mute sound">🔊</button>
+
+  <div id="effects">
+    <div id="impactFlash" aria-hidden="true"></div>
+    <div id="callout" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 
   <div id="start" class="panel">
@@ -158,7 +280,6 @@
       <button class="chip" id="easyBtn">🌤 Easy</button>
       <button class="chip" id="hardBtn">🔥 Hard</button>
       <button class="chip" id="newsBtn">📰 Local News: Off</button>
-      <button class="chip" id="muteBtn">🔊 Sound: On</button>
     </div>
     <div class="tips">
       Swipe ◀ ▶ to change lanes · ▲ jump · ▼ slide<br />
@@ -169,6 +290,7 @@
   </div>
 
   <div id="gameover" class="panel hidden">
+    <div id="bestConfetti" aria-hidden="true"></div>
     <h1>THE DOG GOT YOU!</h1>
     <div class="score-big" id="finalScore">0</div>
     <div class="best-line" id="bestLine">Best: 0</div>

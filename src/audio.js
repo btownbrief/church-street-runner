@@ -41,6 +41,7 @@ function tone(freq, dur, type = 'sine', gain = 0.2, slideTo = null, delay = 0) {
   osc.connect(g).connect(master);
   osc.start(t0);
   osc.stop(t0 + dur + 0.02);
+  return osc;
 }
 
 function noiseBurst(dur, filterFreq, gain = 0.25, delay = 0) {
@@ -131,6 +132,20 @@ function magnetStop() {
   hum = null;
 }
 
+const fanfareVoices = new Set();
+function fanfareTone(...args) {
+  const osc = tone(...args);
+  if (!osc) return;
+  fanfareVoices.add(osc);
+  osc.addEventListener('ended', () => fanfareVoices.delete(osc), { once: true });
+}
+function stopFanfare() {
+  for (const osc of fanfareVoices) {
+    try { osc.stop(); } catch {}
+  }
+  fanfareVoices.clear();
+}
+
 export const sfx = {
   click: () => tone(620, 0.06, 'square', 0.1),
   jump: () => tone(280, 0.2, 'sine', 0.22, 560),
@@ -142,7 +157,15 @@ export const sfx = {
   jetpackPickup: () => { tone(300, 0.35, 'sawtooth', 0.16, 900); jetStart(); },
   jetpackEnd: () => { jetStop(); tone(700, 0.3, 'sine', 0.12, 220); },
   hit: () => { noiseBurst(0.3, 320, 0.4); tone(150, 0.3, 'sawtooth', 0.28, 55); },
+  nearMiss: () => { tone(520, 0.09, 'triangle', 0.1, 760); tone(880, 0.12, 'triangle', 0.08, null, 0.08); },
   bark: () => { tone(240, 0.07, 'square', 0.26, 150); tone(210, 0.09, 'square', 0.26, 130, 0.12); },
+  best: () => {
+    stopFanfare();
+    fanfareTone(523, 0.16, 'triangle', 0.14);
+    fanfareTone(659, 0.16, 'triangle', 0.14, null, 0.14);
+    fanfareTone(784, 0.18, 'triangle', 0.15, null, 0.28);
+    fanfareTone(1047, 0.34, 'triangle', 0.16, null, 0.43);
+  },
   gameover: () => { tone(440, 0.18, 'triangle', 0.2, null, 0); tone(349, 0.18, 'triangle', 0.2, null, 0.18); tone(262, 0.4, 'triangle', 0.2, null, 0.36); },
-  stopLoops: () => { jetStop(); magnetStop(); },
+  stopLoops: () => { jetStop(); magnetStop(); stopFanfare(); },
 };
