@@ -4,12 +4,23 @@ import * as THREE from 'three';
 import { LANES } from './obstacles.js';
 
 const GRAVITY = 26;
-const JUMP_V = 8.6;      // apex ≈ 1.42m
+const JUMP_V = 9.4;      // apex ≈ 1.70m, airtime ≈ 0.72s
 const LANE_SPEED = 14;
-const SLIDE_TIME = 0.62;
+const SLIDE_TIME = 0.75;
+const JUMP_BUFFER = 0.12; // a swipe up this long before landing jumps on landing
 const FLY_HEIGHT = 3.2;
 
-function m(color) { return new THREE.MeshLambertMaterial({ color }); }
+// a small emissive lift keeps the runner the brightest thing on the street
+const playerMats = new Set();
+function m(color) {
+  const mat = new THREE.MeshLambertMaterial({ color, emissive: 0x262626 });
+  playerMats.add(mat);
+  return mat;
+}
+// raise the runner's self-light as the street gets darker (0 = day, 1 = night)
+export function setPlayerGlow(g) {
+  for (const mat of playerMats) mat.emissiveIntensity = 1 + g * 1.6;
+}
 function mesh(w, h, d, mat, x, y, z) {
   const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   o.position.set(x, y, z);
@@ -32,12 +43,21 @@ export class Player {
     this.body = new THREE.Group();
     this.group.add(this.body);
     scene.add(this.group);
+    // cream ring on the ground under the runner: where am I, at a glance
+    this.ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.62, 0.9, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfff3d6, transparent: true, opacity: 0.38, depthWrite: false })
+    );
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.renderOrder = 1;
+    scene.add(this.ring);
     this.setCharacter(spec);
     this.reset();
   }
 
   setCharacter(spec) {
     this.spec = spec;
+    this.body.traverse((o) => { if (o.material) playerMats.delete(o.material); });
     this.body.clear();
     const skin = m(spec.skin), shirt = m(spec.shirt), pants = m(spec.pants), shoe = m(spec.shoes);
 
@@ -80,6 +100,14 @@ export class Player {
       const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.16, 12), hatMat);
       crown.position.y = 1.81;
       this.body.add(crown);
+    } else if (spec.hat === 'toque') {
+      const hatMat = m(spec.hatColor);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.1, 12), hatMat);
+      band.position.y = 1.74;
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.27, 10, 8), hatMat);
+      puff.scale.y = 0.85;
+      puff.position.y = 1.95;
+      this.body.add(band, puff);
     } else if (spec.hat === 'beanie') {
       const b = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), m(spec.hatColor));
       b.scale.y = 0.75;
@@ -97,6 +125,25 @@ export class Player {
       this.body.add(mesh(0.06, 0.12, 0.1, hp, -0.22, 1.6, 0));
       this.body.add(mesh(0.06, 0.12, 0.1, hp, 0.22, 1.6, 0));
       this.body.add(mesh(0.46, 0.05, 0.08, hp, 0, 1.78, 0));
+    }
+    if (spec.guitar) {
+      const wood = m(spec.guitar);
+      const g1 = mesh(0.42, 0.5, 0.12, wood, 0.05, 1.0, 0.24);
+      g1.rotation.z = 0.5;
+      const neck = mesh(0.08, 0.6, 0.06, m(0x3d2a1c), -0.18, 1.45, 0.24);
+      neck.rotation.z = 0.5;
+      this.body.add(g1, neck);
+    }
+    if (spec.satchel) {
+      this.body.add(mesh(0.36, 0.34, 0.16, m(spec.satchel), 0.3, 0.9, -0.05));
+      const strap = mesh(0.06, 0.8, 0.32, m(spec.satchel), 0, 1.15, 0);
+      strap.rotation.z = -0.7;
+      this.body.add(strap);
+    }
+    if (spec.vest) {
+      const v = m(spec.vest);
+      this.body.add(mesh(0.54, 0.5, 0.33, v, 0, 1.12, 0));
+      this.body.add(mesh(0.55, 0.06, 0.34, m(0xf4f4ee), 0, 1.0, 0)); // reflective stripe
     }
     if (spec.backpack) {
       this.body.add(mesh(0.4, 0.5, 0.2, m(spec.backpack), 0, 1.15, 0.26));
@@ -143,6 +190,8 @@ export class Player {
     this.flying = 0;
     this.runPhase = 0;
     this.zOffset = 0;   // pushed forward when the black dog appears
+    this.jumpBuffer = 0;
+    this.justJumped = false;
     this.group.position.set(this.x, 0, 0);
     this.group.rotation.set(0, Math.PI, 0);
     this.body.rotation.set(0, 0, 0);
@@ -157,12 +206,16 @@ export class Player {
   }
 
   jump() {
-    if (this.flying > 0) return;
+    if (this.flying > 0) return false;
     if (this.grounded) {
       this.vy = JUMP_V;
       this.grounded = false;
       this.sliding = 0;
+      this.jumpBuffer = 0;
+      return true;
     }
+    this.jumpBuffer = JUMP_BUFFER; // jump the moment we land
+    return false;
   }
 
   slide() {
@@ -196,11 +249,18 @@ export class Player {
     } else if (!this.grounded) {
       this.vy -= GRAVITY * dt;
       this.y += this.vy * dt;
-      if (this.y <= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
+      if (this.y <= 0) {
+        this.y = 0; this.vy = 0; this.grounded = true;
+        if (this.jumpBuffer > 0) { this.jump(); this.justJumped = true; }
+      }
     }
+    if (this.jumpBuffer > 0) this.jumpBuffer -= dt;
     if (this.sliding > 0) this.sliding -= dt;
 
     this.group.position.set(this.x, this.y, this.zOffset);
+    this.ring.position.set(this.x, 0.03, this.zOffset);
+    const rs = 1 - Math.min(0.45, this.y * 0.12);
+    this.ring.scale.set(rs, rs, rs);
 
     // --- animation ---
     this.runPhase += dt * (6 + speed * 0.55);

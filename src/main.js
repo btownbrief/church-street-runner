@@ -1,18 +1,33 @@
 import * as THREE from 'three';
-import { ChunkManager } from './chunks.js';
+import { ChunkManager, CHUNK_LEN } from './chunks.js';
 import { ObstacleManager } from './obstacles.js';
-import { Player } from './player.js';
+import { Course } from './course.js';
+import { Player, setPlayerGlow } from './player.js';
 import { bindInput } from './input.js';
 import { makeChurch, makeClouds, updateClouds, updateChurch } from './church.js';
-import { makeBrickTexture } from './props.js';
+import { makeBrickTexture, MAT } from './props.js';
 import { AmbientPeople, makeDog, animateDogRun } from './npcs.js';
 import { Collectibles } from './collectibles.js';
-import { CHARACTERS, getSavedCharacter, saveCharacter } from './characters.js';
-import { loadHeadlines, isNewsEnabled, setNewsEnabled, getLatestEdition } from './news.js';
+import {
+  CHARACTERS, getSavedCharacter, saveCharacter, loadProgress, saveProgress,
+  isUnlocked, meetsUnlock, unlockProgress,
+} from './characters.js';
+import { loadHeadlines, getLatestEdition } from './news.js';
 import { sfx, unlock as unlockAudio, isMuted, setMuted } from './audio.js';
 import {
   lbEnabled, getName, submitScore, renamePlayer, fetchTop, monthLabel, playerId,
 } from './leaderboard.js';
+import {
+  BLOCK_LEN, blockAt, blockInfo, speedAt, dailyPlan, nyDate, dayDiff,
+} from './blocks.js';
+
+// ------------------------------------------------------------ storage
+
+function lsGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function lsSet(key, v) { try { localStorage.setItem(key, v); } catch { /* blocked */ } }
+function lsJSON(key, fallback) {
+  try { const v = JSON.parse(lsGet(key)); return v && typeof v === 'object' ? v : fallback; } catch { return fallback; }
+}
 
 // ------------------------------------------------------------ renderer
 
@@ -22,7 +37,6 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -30,14 +44,12 @@ app.appendChild(renderer.domElement);
 
 // ------------------------------------------------------------ scene / sky
 
-const SKY = new THREE.Color(0xbdd7e7);
 const scene = new THREE.Scene();
-scene.background = SKY;
-scene.fog = new THREE.Fog(SKY, 35, 130);
+const skyColor = new THREE.Color(0xbdd7e7);
+scene.background = skyColor;
+scene.fog = new THREE.Fog(skyColor.clone(), 35, 130);
 
-const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 400);
-camera.position.set(0, 4.6, 7.2);
-camera.lookAt(0, 2.2, -20);
+const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 400);
 
 // ------------------------------------------------------------ lights
 
@@ -82,6 +94,15 @@ for (const x of [-3.4, 3.4]) {
   strip.receiveShadow = true;
   scene.add(strip);
 }
+// the sidewalks outside the grey strips sit about 28% darker, so the three
+// lanes read as the play field
+const shadeMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false });
+for (const side of [-1, 1]) {
+  const shade = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 260), shadeMat);
+  shade.rotation.x = -Math.PI / 2;
+  shade.position.set(side * (3.65 + 3.2), 0.008, -100);
+  scene.add(shade);
+}
 
 // ------------------------------------------------------------ world
 
@@ -91,14 +112,16 @@ loadHeadlines().then(() => {
   const a = document.getElementById('newsletterLink');
   a.href = ed.url;
   a.textContent = `📰 Read "${ed.title}" →`;
-});
+}).catch(() => {});
 
+const progress = loadProgress();
 const chunks = new ChunkManager(scene);
 const obstacles = new ObstacleManager(scene);
-let character = getSavedCharacter();
-const player = new Player(scene, character);
-const people = new AmbientPeople(scene, 10);
 const collectibles = new Collectibles(scene);
+const course = new Course(obstacles, collectibles);
+let character = getSavedCharacter(progress);
+const player = new Player(scene, character);
+const people = new AmbientPeople(scene, 4);
 
 const church = makeChurch();
 church.position.set(0, 0, -165);
@@ -106,6 +129,8 @@ scene.add(church);
 const clouds = makeClouds();
 clouds.position.z = -165;
 scene.add(clouds);
+let cloudMat = null;
+clouds.traverse((o) => { if (o.isMesh && !cloudMat) cloudMat = o.material; });
 
 // the black dog that chases you after your first wipeout
 const chaser = makeDog('black');
@@ -114,39 +139,93 @@ chaser.rotation.y = Math.PI / 2; // dog model faces +x; turn to run up the stree
 chaser.visible = false;
 scene.add(chaser);
 
-// ------------------------------------------------------------ game state
+// ------------------------------------------------------------ personal-best lines on the street
+
+function makeChalkLine(label, strong) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 160;
+  const g = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.8, 2.1),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.025;
+  mesh.renderOrder = 1;
+  mesh.visible = false;
+  mesh.userData.draw = (value) => {
+    g.clearRect(0, 0, 512, 160);
+    g.fillStyle = strong ? 'rgba(255,250,235,0.95)' : 'rgba(255,250,235,0.7)';
+    // a slightly wobbly chalk stripe across all three lanes
+    const th = strong ? 16 : 9;
+    g.beginPath();
+    g.moveTo(6, 126);
+    for (let x = 6; x <= 506; x += 20) g.lineTo(x, 124 + Math.sin(x * 0.07) * 3);
+    for (let x = 506; x >= 6; x -= 20) g.lineTo(x, 124 + th + Math.sin(x * 0.05) * 2);
+    g.closePath();
+    g.fill();
+    g.font = `900 ${strong ? 76 : 58}px "Avenir Next", system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    g.fillText(`${label} ${value.toLocaleString('en-US')}`, 256, 106);
+    tex.needsUpdate = true;
+  };
+  scene.add(mesh);
+  return mesh;
+}
+const bestLineMesh = makeChalkLine('BEST', true);
+const todayLineMesh = makeChalkLine('TODAY', false);
+
+// ------------------------------------------------------------ DOM
 
 const $ = (id) => document.getElementById(id);
-const scoreEl = $('score'), bestEl = $('best'), coinsEl = $('coins'), livesEl = $('lives');
+const scoreEl = $('score'), coinsEl = $('coins'), pipsEl = $('pips');
+const blockNameEl = $('blockName'), blockCardEl = $('blockCard'), hudEl = $('hud');
+const powerBarEl = $('powerBar'), powerIconEl = $('powerIcon'), powerFillEl = $('powerFill');
 const startPanel = $('start'), overPanel = $('gameover');
-const finalScoreEl = $('finalScore'), bestLineEl = $('bestLine'), coinLineEl = $('coinLine');
-const powerEl = $('power'), livesBadgeEl = $('livesBadge');
+const finalScoreEl = $('finalScore'), bestLineEl = $('bestLine'), overTitleEl = $('overTitle');
+const goalSubEl = $('goalSub'), goalTextEl = $('goalText'), goalFillEl = $('goalFill'), newRunnerEl = $('newRunner');
 const effectsEl = $('effects'), impactFlashEl = $('impactFlash'), calloutEl = $('callout');
+const teachEl = $('teach'), teachArrowEl = $('teachArrow'), teachTextEl = $('teachText');
+const countdownEl = $('countdown');
 const bestConfettiEl = $('bestConfetti');
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-const MODES = {
-  easy: { base: 11, accel: 0.42, max: 24 },
-  hard: { base: 13.5, accel: 0.75, max: 30 },
+if ('ontouchstart' in window || window.matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+// the shared news ticker: tucked away during play, back on the menus
+const ticker = {
+  hide: () => { try { window.BtownTicker?.hide?.(); } catch { /* not loaded */ } },
+  show: () => { try { window.BtownTicker?.show?.(); } catch { /* not loaded */ } },
 };
-let modeName = localStorage.getItem('csr-mode') || 'easy';
 
-const COIN_POINTS = 3; // score bonus per coin collected
+// ------------------------------------------------------------ game state
 
-let state = 'ready'; // ready | running | over
-let speed = MODES[modeName].base;
+const COIN_POINTS = 3;   // score bonus per coin collected
+const BLOCK_BONUS = 50;  // score bonus for reaching each new block
+const MAX_LIVES = 3;
+const MAGNET_TIME = 7;
+const FLY_TIME = 4.5;
+
+let state = 'ready'; // ready | running | paused | over
+let dateOverride = null;
+let today = nyDate();
+let plan = dailyPlan(today);
+let speed = speedAt(0);
+let dist = 0;
 let score = 0;
 let coins = 0;
-let best = Number(localStorage.getItem('csr-best') || 0);
-bestEl.textContent = Math.floor(best);
-
-let lives = 2;
+let best = Number(lsGet('csr-best') || 0) || 0;
+let bestDist = Number(lsGet('csr-best-dist') || 0) || 0;
+let block = 1;
+let lives = MAX_LIVES;
 let invuln = 0;
 let magnetT = 0;
 let shakeT = 0;
 let overAt = 0;
 let dogLunge = 0;
 let nearMissStreak = 0;
+let coinChain = 0, coinChainT = 0;
 let nearCandidates = new Map();
 let passedNearMisses = new Set();
 let effectRunId = 0;
@@ -154,8 +233,32 @@ let liveParticles = 0;
 let calloutToken = 0;
 let scorePopToken = 0;
 let impactToken = 0;
+let runStartBestDist = 0;
+let pbFired = false;
+let runUnlocked = [];
+let teaching = false;
+let teachShown = null;   // obstacle slot whose hint is on screen
+let teachSeen = 0;
+let countdownT = 0;
 const effectTimers = new Set();
 const MAX_PARTICLES = 40;
+
+function dayRecord() {
+  const r = lsJSON('csr-day', null);
+  return r && r.date === today ? r : { date: today, best: 0, dist: 0 };
+}
+function streakNow() {
+  const s = lsJSON('csr-streak', null);
+  if (!s || !s.last) return 0;
+  return dayDiff(s.last, today) <= 1 ? s.n || 0 : 0;
+}
+function bumpStreak() {
+  const s = lsJSON('csr-streak', null);
+  if (!s || !s.last) { lsSet('csr-streak', JSON.stringify({ last: today, n: 1 })); return; }
+  if (s.last === today) return;
+  const gap = dayDiff(s.last, today);
+  lsSet('csr-streak', JSON.stringify({ last: today, n: gap === 1 ? (s.n || 0) + 1 : 1 }));
+}
 
 function later(fn, delay) {
   const id = effectRunId;
@@ -176,12 +279,16 @@ function clearRunEffects() {
   calloutToken += 1;
   scorePopToken += 1;
   impactToken += 1;
-  calloutEl.classList.remove('active');
+  calloutEl.classList.remove('active', 'big');
   calloutEl.textContent = '';
   impactFlashEl.classList.remove('active');
   scoreEl.classList.remove('score-pop');
-  livesBadgeEl.classList.remove('hit');
+  pipsEl.classList.remove('hit');
   bestLineEl.classList.remove('fanfare');
+  blockCardEl.classList.remove('show');
+  hudEl.classList.remove('carding');
+  teachEl.classList.remove('on');
+  countdownEl.classList.remove('on');
   nearCandidates = new Map();
   passedNearMisses = new Set();
 }
@@ -212,6 +319,10 @@ function spawnParticle(container, className, x, y, duration, styles = {}, text =
   }, duration);
 }
 
+function buzz(ms) {
+  try { navigator.vibrate?.(ms); } catch { /* not supported */ }
+}
+
 function popScore() {
   const token = ++scorePopToken;
   scoreEl.classList.remove('score-pop');
@@ -222,42 +333,47 @@ function popScore() {
   }, 220);
 }
 
-function showCallout(text) {
+function showCallout(text, big = false) {
   const token = ++calloutToken;
   calloutEl.textContent = text;
-  calloutEl.classList.remove('active');
+  calloutEl.classList.remove('active', 'big');
   void calloutEl.offsetWidth;
+  calloutEl.classList.toggle('big', big);
   calloutEl.classList.add('active');
   later(() => {
     if (token !== calloutToken) return;
-    calloutEl.classList.remove('active');
+    calloutEl.classList.remove('active', 'big');
     calloutEl.textContent = '';
-  }, 760);
+  }, big ? 1650 : 950);
 }
 
 function showCoinPickup(points, position) {
   const { x, y } = screenPoint(position);
-  spawnParticle(effectsEl, 'float-score', x, y - 12, 260, {}, `+${points}`, true);
+  spawnParticle(effectsEl, 'float-score', x, y - 12, 420, {}, `+${points}`, true);
   const offsets = [[-24, -20], [22, -24], [-18, 20], [24, 16]];
   for (const [dx, dy] of offsets) {
-    spawnParticle(effectsEl, 'sparkle', x, y, 260, {
-      '--dx': `${dx}px`,
-      '--dy': `${dy}px`,
-    }, '✦');
+    spawnParticle(effectsEl, 'sparkle', x, y, 300, { '--dx': `${dx}px`, '--dy': `${dy}px` }, '✦');
   }
   popScore();
 }
 
+function paintPips(hit = false) {
+  [...pipsEl.children].forEach((pip, i) => pip.classList.toggle('lost', i >= lives));
+  if (hit) {
+    pipsEl.classList.remove('hit');
+    void pipsEl.offsetWidth;
+    pipsEl.classList.add('hit');
+  }
+}
+
 function showCrashImpact() {
   const token = ++impactToken;
-  livesBadgeEl.classList.remove('hit');
   impactFlashEl.classList.remove('active');
-  void livesBadgeEl.offsetWidth;
-  livesBadgeEl.classList.add('hit');
+  paintPips(true);
   if (!motionQuery.matches) impactFlashEl.classList.add('active');
   later(() => {
     if (token !== impactToken) return;
-    livesBadgeEl.classList.remove('hit');
+    pipsEl.classList.remove('hit');
     impactFlashEl.classList.remove('active');
   }, 440);
 
@@ -273,12 +389,10 @@ function showCrashImpact() {
   }
 }
 
-function celebrateBest() {
-  bestLineEl.classList.add('fanfare');
-  sfx.best();
+function confettiBurst(container) {
   const colors = ['#c9502f', '#ffe8c9', '#7dff9b', '#e8b23a'];
   for (let i = 0; i < 24; i++) {
-    spawnParticle(bestConfettiEl, 'confetti', `${5 + Math.random() * 90}%`, `${Math.random() * 12}%`, 1200, {
+    spawnParticle(container, 'confetti', `${5 + Math.random() * 90}%`, `${Math.random() * 12}%`, 1200, {
       '--dx': `${Math.round((Math.random() - 0.5) * 120)}px`,
       '--dy': `${Math.round(window.innerHeight * (0.55 + Math.random() * 0.35))}px`,
       '--rot': `${Math.round((Math.random() - 0.5) * 900)}deg`,
@@ -287,8 +401,7 @@ function celebrateBest() {
   }
 }
 
-function confirmNearMiss(obstacle) {
-  passedNearMisses.add(obstacle);
+function confirmNearMiss() {
   nearMissStreak = Math.min(3, nearMissStreak + 1);
   const bonus = nearMissStreak * 5;
   score += bonus;
@@ -296,6 +409,7 @@ function confirmNearMiss(obstacle) {
   popScore();
   showCallout(`CLOSE ONE! +${bonus} · ×${nearMissStreak}`);
   sfx.nearMiss();
+  buzz(8);
 }
 
 function updateNearMisses(pz) {
@@ -311,63 +425,223 @@ function updateNearMisses(pz) {
     const clearance = Math.max(obstacle.type.half.z + 0.52, ...subClearance);
     if (obstacle.obj.position.z - pz > clearance) {
       nearCandidates.delete(obstacle);
-      confirmNearMiss(obstacle);
+      passedNearMisses.add(obstacle);
+      confirmNearMiss();
     }
   }
 }
+
+// ------------------------------------------------------------ blocks, sky, time of day
+
+const cTmp = new THREE.Color();
+const glassEmissive = new THREE.Color(0x4a3614);
+function mixHex(a, b, t, out) { return out.set(a).lerp(cTmp.set(b), t); }
+function smooth(t) { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); }
+
+// sky for a distance: blends across the 60 m around each cross street
+function applySky(d) {
+  const b = blockAt(d);
+  const into = d - (b - 1) * BLOCK_LEN;
+  let from = blockInfo(plan, b).sky, to = from, t = 0;
+  if (into < 30 && b > 1) { from = blockInfo(plan, b - 1).sky; t = smooth(0.5 + into / 60); }
+  else if (BLOCK_LEN - into < 30) { to = blockInfo(plan, b + 1).sky; t = smooth(0.5 - (BLOCK_LEN - into) / 60); }
+  const lerp = (k) => from[k] + (to[k] - from[k]) * t;
+  mixHex(from.sky, to.sky, t, skyColor);
+  scene.fog.color.copy(skyColor);
+  mixHex(from.sun, to.sun, t, sun.color);
+  sun.intensity = lerp('sunI');
+  mixHex(from.hemiSky, to.hemiSky, t, hemi.color);
+  mixHex(from.hemiGround, to.hemiGround, t, hemi.groundColor);
+  hemi.intensity = lerp('hemiI');
+  if (cloudMat) mixHex(from.cloud, to.cloud, t, cloudMat.color);
+  const glow = lerp('glow');
+  MAT.lampGlow.emissiveIntensity = 0.9 + glow * 1.6;
+  MAT.interiorGlow.emissiveIntensity = 0.55 + glow * 1.0;
+  MAT.glassWarm.emissiveIntensity = 1 + glow * 1.5;
+  MAT.glass.emissive.copy(glassEmissive).multiplyScalar(glow * 0.7);
+  stripMat.color.setHex(0xb9b2a4).multiplyScalar(1 + glow * 0.25);
+  setPlayerGlow(glow);
+  player.ring.material.opacity = 0.38 + glow * 0.25;
+}
+
+function blockLabel(b) {
+  const info = blockInfo(plan, b);
+  return `Block ${b} · ${info.theme.name}`;
+}
+
+function enterBlock(b) {
+  block = b;
+  blockNameEl.textContent = blockLabel(b);
+  if (b > 1) {
+    score += BLOCK_BONUS;
+    const info = blockInfo(plan, b);
+    const eyebrow = document.createElement('small');
+    eyebrow.textContent = `Block ${b}${info.day > 1 ? ` · Day ${info.day}` : ''}`;
+    const bonus = document.createElement('b');
+    bonus.textContent = `+${BLOCK_BONUS}`;
+    blockCardEl.replaceChildren(eyebrow, info.theme.name, bonus);
+    blockCardEl.classList.remove('show');
+    void blockCardEl.offsetWidth;
+    blockCardEl.classList.add('show');
+    hudEl.classList.add('carding');
+    later(() => hudEl.classList.remove('carding'), 1600);
+    sfx.block();
+    popScore();
+  }
+  if (b > progress.far) {
+    progress.far = b;
+    saveProgress(progress);
+  }
+  checkUnlocks();
+}
+
+function checkUnlocks() {
+  for (const c of CHARACTERS) {
+    if (!c.unlock || progress.unlocked.includes(c.id)) continue;
+    if (meetsUnlock(c, progress.bank + (state === 'running' ? coins : 0), progress.far)) {
+      progress.unlocked.push(c.id);
+      saveProgress(progress);
+      runUnlocked.push(c);
+      if (state === 'running') {
+        showCallout(`NEW RUNNER · ${c.emoji} ${c.name.toUpperCase()}`, true);
+        sfx.unlock();
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------ teach by doing (first run only)
+
+const TEACH = {
+  up: { arrow: '↑', text: 'SWIPE UP', nx: '0px', ny: '-10px' },
+  side: { arrow: '↔', text: 'SWIPE SIDEWAYS', nx: '10px', ny: '0px' },
+  down: { arrow: '↓', text: 'SWIPE DOWN', nx: '0px', ny: '10px' },
+};
+function updateTeach() {
+  if (!teaching) return;
+  const pz = player.zOffset;
+  if (teachShown && (!teachShown.active || teachShown.obj.position.z > pz + 1.2)) {
+    teachShown = null;
+    teachEl.classList.remove('on');
+    teachSeen += 1;
+    if (teachSeen >= 3) { teaching = false; lsSet('csr-taught', '1'); }
+  }
+  if (teachShown) return;
+  for (const o of obstacles.active) {
+    if (!o.hint) continue;
+    const z = o.obj.position.z;
+    if (z > -speed * 1.7 && z < pz) {
+      teachShown = o;
+      const h = TEACH[o.hint];
+      teachArrowEl.textContent = h.arrow;
+      teachArrowEl.style.setProperty('--nx', h.nx);
+      teachArrowEl.style.setProperty('--ny', h.ny);
+      teachTextEl.textContent = h.text;
+      teachEl.classList.add('on');
+      // all three slots of a gate row share the hint; only teach it once
+      for (const other of obstacles.active) if (other !== o && other.hint === o.hint) other.hint = null;
+      break;
+    }
+  }
+}
+function teachDone(kind) {
+  if (teachShown && teachShown.hint === kind) teachEl.classList.remove('on');
+}
+
+// ------------------------------------------------------------ run lifecycle
 
 function startGame() {
   unlockAudio();
   sfx.stopLoops();
   clearRunEffects();
+  closeSheet();
+  today = dateOverride || nyDate();
+  plan = dailyPlan(today);
+  bumpStreak();
+  chunks.biasFor = (seq) => blockInfo(plan, Math.floor((seq * CHUNK_LEN) / BLOCK_LEN) + 1).theme.chunkBias;
   chunks.reset();
   obstacles.reset();
   collectibles.reset();
+  teaching = lsGet('csr-taught') !== '1';
+  teachShown = null;
+  teachSeen = 0;
+  course.reset({ plan, tutorial: teaching, twist: plan.twist.id });
   people.reset();
   player.reset();
-  speed = MODES[modeName].base;
+  dist = 0;
+  speed = speedAt(0);
   score = 0;
   coins = 0;
-  lives = 2;
+  lives = MAX_LIVES;
   nearMissStreak = 0;
+  coinChain = 0;
   invuln = 0;
   magnetT = 0;
   dogLunge = 0;
+  runUnlocked = [];
+  runStartBestDist = bestDist;
+  pbFired = false;
+  const rec = dayRecord();
+  bestLineMesh.visible = false;
+  todayLineMesh.visible = false;
+  if (bestDist > 60) bestLineMesh.userData.draw(Math.floor(bestDist));
+  todayLineMesh.userData.todayDist = rec.dist > 60 && bestDist - rec.dist > 40 ? rec.dist : 0;
+  if (todayLineMesh.userData.todayDist) todayLineMesh.userData.draw(Math.floor(rec.dist));
   chaser.visible = false;
   state = 'running';
+  document.body.classList.add('playing');
   startPanel.classList.add('hidden');
   overPanel.classList.add('hidden');
-  powerEl.textContent = '';
+  powerBarEl.classList.remove('on');
   scoreEl.textContent = '0';
   coinsEl.textContent = '0';
-  livesEl.textContent = String(lives);
+  paintPips();
+  enterBlock(1);
+  applySky(0);
+  ticker.hide();
 }
 
 function onHit() {
   if (invuln > 0 || player.flying > 0) return;
   lives -= 1;
-  livesEl.textContent = String(lives);
   nearMissStreak = 0;
   nearCandidates.clear();
   shakeT = motionQuery.matches ? 0 : 0.4;
   showCrashImpact();
   sfx.hit();
+  buzz(20);
   if (lives > 0) {
     // first crash: the black dog picks up your scent
     invuln = 2.2;
     player.sliding = 0;
     player.zOffset = -1.4;              // scoot up the street
-    chaser.visible = true;
-    chaser.position.set(player.x, 0, 2.6);
+    if (!chaser.visible) {
+      chaser.visible = true;
+      chaser.position.set(player.x, 0, 2.6);
+    }
     sfx.bark();
   } else {
     gameOver();
   }
 }
 
+function nextGoal() {
+  // the locked runner you are closest to
+  let bestC = null, bestP = -1;
+  for (const c of CHARACTERS) {
+    if (isUnlocked(c, progress)) continue;
+    const p = unlockProgress(c, progress.bank, progress.far);
+    if (p > bestP) { bestP = p; bestC = c; }
+  }
+  return bestC ? { c: bestC, p: bestP } : null;
+}
+
 function gameOver() {
   state = 'over';
+  document.body.classList.remove('playing');
   sfx.stopLoops();
+  teachEl.classList.remove('on');
+  powerBarEl.classList.remove('on');
   const s = Math.floor(score);
   const isBest = s > best;
   if (chaser.visible) sfx.bark();
@@ -376,46 +650,127 @@ function gameOver() {
   dogLunge = chaser.visible ? 0.45 : 0;
   if (isBest) {
     best = s;
-    localStorage.setItem('csr-best', String(best));
+    lsSet('csr-best', String(best));
   }
-  finalScoreEl.textContent = s;
-  coinLineEl.textContent = `🪙 ${coins} collected · +${coins * COIN_POINTS} pts`;
-  bestLineEl.textContent = isBest ? 'NEW BEST!' : `Best: ${Math.floor(best)}`;
+  if (dist > bestDist) {
+    bestDist = Math.floor(dist);
+    lsSet('csr-best-dist', String(bestDist));
+  }
+  const rec = dayRecord();
+  rec.best = Math.max(rec.best || 0, s);
+  rec.dist = Math.max(rec.dist || 0, Math.floor(dist));
+  lsSet('csr-day', JSON.stringify(rec));
+  progress.bank += coins;
+  saveProgress(progress);
+  checkUnlocks();
+  if (teaching) { teaching = false; lsSet('csr-taught', '1'); }
+
+  overTitleEl.textContent = chaser.visible ? 'THE DOG GOT YOU!' : 'WIPEOUT!';
+  finalScoreEl.textContent = s.toLocaleString('en-US');
+  bestLineEl.textContent = isBest
+    ? `NEW BEST! · Block ${block} · 🪙 ${coins}`
+    : `Block ${block} · 🪙 ${coins} · Best ${best.toLocaleString('en-US')}`;
   bestLineEl.className = isBest ? 'best-line new-best' : 'best-line';
-  bestEl.textContent = Math.floor(best);
+
+  if (runUnlocked.length) {
+    const c = runUnlocked[runUnlocked.length - 1];
+    newRunnerEl.textContent = `NEW RUNNER · ${c.emoji} ${c.name}`;
+    newRunnerEl.classList.remove('hidden');
+  } else newRunnerEl.classList.add('hidden');
+
+  const goal = nextGoal();
+  if (goal) {
+    const u = goal.c.unlock;
+    goalTextEl.textContent = `Next runner: ${goal.c.emoji} ${goal.c.name}`;
+    goalSubEl.textContent = u.kind === 'bank'
+      ? `${u.text} · ${progress.bank} so far`
+      : `${u.text} · your best: Block ${progress.far}`;
+    goalFillEl.style.width = '0%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { goalFillEl.style.width = `${Math.round(goal.p * 100)}%`; }));
+  } else {
+    goalTextEl.textContent = 'Every runner unlocked';
+    goalSubEl.textContent = `Farthest: Block ${progress.far}`;
+    goalFillEl.style.width = '100%';
+  }
   overPanel.classList.remove('hidden');
-  if (isBest) celebrateBest();
+  if (isBest) {
+    bestLineEl.classList.add('fanfare');
+    sfx.best();
+    confettiBurst(bestConfettiEl);
+  }
   updateLeaderboard(s);
+  buildRunnerRow();
+  paintTitle();
+  ticker.show();
 }
+
+// ------------------------------------------------------------ pause / resume
+
+function pauseGame() {
+  if (state !== 'running') return;
+  state = 'paused';
+  countdownT = 0;
+  sfx.stopLoops();
+  countdownEl.textContent = 'II';
+  countdownEl.dataset.n = '';
+  countdownEl.classList.add('on');
+}
+function resumeGame() {
+  if (state !== 'paused' || countdownT > 0) return;
+  unlockAudio();
+  countdownT = 2.4; // 3-2-1, 0.8 s each
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseGame();
+  else resumeGame();
+});
 
 // ------------------------------------------------------------ leaderboard
 
-const lbBox = $('lb'), lbList = $('lbList'), lbStatus = $('lbStatus');
+const lbSheet = $('lbSheet'), lbList = $('lbList'), lbStatus = $('lbStatus'), lbToggle = $('lbToggle');
 const lbForm = $('lbForm'), lbNameInput = $('lbNameInput');
 const lbThisBtn = $('lbThisBtn'), lbLastBtn = $('lbLastBtn'), lbRenameBtn = $('lbRenameBtn');
 let lbMonthOffset = 0;
 
 if (lbEnabled()) {
-  lbBox.classList.remove('hidden');
+  lbToggle.classList.remove('hidden');
   lbThisBtn.textContent = `🏆 ${monthLabel(0)}`;
   lbLastBtn.textContent = monthLabel(-1);
+}
+
+function openSheet() {
+  sfx.click();
+  lbSheet.classList.remove('closed');
+  if (lbForm.dataset.pendingScore && !getName()) showNameForm();
+  else renderBoard();
+}
+function closeSheet() {
+  lbSheet.classList.add('closed');
+  lbNameInput.blur();
+}
+function showNameForm() {
+  lbForm.classList.remove('hidden');
+  lbRenameBtn.classList.add('hidden');
+  lbStatus.textContent = `Pick a name to join the ${monthLabel(0)} leaderboard!`;
+  lbList.innerHTML = '';
 }
 
 async function updateLeaderboard(s) {
   if (!lbEnabled()) return;
   if (!getName()) {
-    // first run: ask for a name before joining the board
-    lbForm.classList.remove('hidden');
-    lbRenameBtn.classList.add('hidden');
-    lbStatus.textContent = 'Pick a name to join the monthly leaderboard!';
-    lbList.innerHTML = '';
     lbForm.dataset.pendingScore = String(s);
+    lbToggle.textContent = `🏆 Join the ${monthLabel(0)} board`;
     return;
   }
+  lbToggle.textContent = `🏆 ${monthLabel(0)} board`;
   try {
-    await submitScore(s);
-  } catch { /* offline — still try to show the board */ }
-  renderBoard();
+    if (s > 0) await submitScore(s);
+  } catch { /* offline: still try to show the board */ }
+  try {
+    const rows = await fetchTop(0);
+    const myRank = rows.findIndex((r) => r.player_id === playerId());
+    if (myRank >= 0) lbToggle.textContent = `🏆 You're #${myRank + 1} in ${monthLabel(0)}`;
+  } catch { /* offline */ }
 }
 
 async function renderBoard() {
@@ -437,8 +792,8 @@ async function renderBoard() {
     });
     const myRank = rows.findIndex((r) => r.player_id === me);
     lbStatus.textContent = rows.length === 0
-      ? 'No scores yet this month — be the first!'
-      : myRank >= 0 ? `You're #${myRank + 1} of ${rows.length} this month` : '';
+      ? 'No scores yet this month. Be the first!'
+      : myRank >= 0 ? `You're #${myRank + 1} of ${rows.length}` : '';
   } catch {
     lbStatus.textContent = 'Leaderboard unavailable (offline?)';
   }
@@ -455,6 +810,7 @@ $('lbSaveBtn').addEventListener('click', async () => {
     if (pending > 0) await submitScore(pending);
   } catch { /* offline */ }
   renderBoard();
+  updateLeaderboard(0).catch(() => {});
 });
 lbNameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('lbSaveBtn').click();
@@ -478,20 +834,26 @@ lbLastBtn.addEventListener('click', () => {
   lbThisBtn.classList.remove('sel');
   renderBoard();
 });
+lbToggle.addEventListener('click', openSheet);
+$('lbClose').addEventListener('click', () => { sfx.click(); closeSheet(); });
 
 $('startBtn').addEventListener('click', startGame);
 $('restartBtn').addEventListener('click', startGame);
-// back to the start screen to change runner / difficulty
+// back to the start screen to change runner
 $('menuBtn').addEventListener('click', () => {
   unlockAudio();
   sfx.click();
   sfx.stopLoops();
   clearRunEffects();
+  closeSheet();
   state = 'ready';
+  document.body.classList.remove('playing');
   chaser.visible = false;
   player.reset();
   overPanel.classList.add('hidden');
   startPanel.classList.remove('hidden');
+  paintTitle();
+  ticker.show();
 });
 // sound toggle
 const muteBtn = $('mute');
@@ -509,71 +871,87 @@ muteBtn.addEventListener('click', () => {
   if (!isMuted()) sfx.click();
 });
 
-// character select
-const charRow = $('charRow');
-for (const c of CHARACTERS) {
-  const b = document.createElement('button');
-  b.className = 'chip' + (c.id === character.id ? ' sel' : '');
-  b.textContent = `${c.emoji} ${c.name}`;
-  b.addEventListener('click', () => {
-    character = c;
-    saveCharacter(c.id);
-    player.setCharacter(c);
-    charRow.querySelectorAll('.chip').forEach((x) => x.classList.remove('sel'));
-    b.classList.add('sel');
-  });
-  charRow.appendChild(b);
+// ------------------------------------------------------------ title screen
+
+const charRow = $('charRow'), lockNote = $('lockNote');
+function buildRunnerRow() {
+  charRow.replaceChildren();
+  for (const c of CHARACTERS) {
+    const open = isUnlocked(c, progress);
+    const short = c.name.replace(/^The /, '');
+    const b = document.createElement('button');
+    b.className = 'chip' + (c.id === character.id ? ' sel' : '') + (open ? '' : ' locked');
+    b.textContent = open ? `${c.emoji} ${short}` : `🔒 ${short}`;
+    b.addEventListener('click', () => {
+      sfx.click();
+      if (!isUnlocked(c, progress)) {
+        lockNote.textContent = `🔒 ${c.name}: ${c.unlock.text}`;
+        return;
+      }
+      lockNote.textContent = '';
+      character = c;
+      saveCharacter(c.id);
+      player.setCharacter(c);
+      charRow.querySelectorAll('.chip').forEach((x) => x.classList.remove('sel'));
+      b.classList.add('sel');
+    });
+    charRow.appendChild(b);
+  }
+  const sel = charRow.querySelector('.sel');
+  if (sel) charRow.scrollLeft = Math.max(0, sel.offsetLeft - charRow.clientWidth / 2 + sel.offsetWidth / 2);
 }
-// mode select
-for (const mn of ['easy', 'hard']) {
-  const b = $(mn + 'Btn');
-  b.classList.toggle('sel', modeName === mn);
-  b.addEventListener('click', () => {
-    modeName = mn;
-    localStorage.setItem('csr-mode', mn);
-    $('easyBtn').classList.toggle('sel', mn === 'easy');
-    $('hardBtn').classList.toggle('sel', mn === 'hard');
-  });
+
+function paintTitle() {
+  if (state !== 'running') {
+    today = dateOverride || nyDate();
+    plan = dailyPlan(today);
+  }
+  $('todayLine').textContent = `TODAY · ${plan.twist.name.toUpperCase()}`;
+  $('todayBlurb').textContent = plan.twist.blurb;
+  const rec = dayRecord();
+  const parts = [];
+  if (rec.best > 0) parts.push(`Today ${rec.best.toLocaleString('en-US')}`);
+  if (best > 0) parts.push(`Best ${Math.floor(best).toLocaleString('en-US')}`);
+  const st = streakNow();
+  if (st >= 2) parts.push(`🔥 ${st}-day streak`);
+  $('titleStats').textContent = parts.join(' · ');
+  // the title shows the street as today's run will start (Night Owl: at night)
+  if (state === 'ready') applySky(0);
 }
-// news toggle
-const newsBtn = $('newsBtn');
-function paintNews() {
-  newsBtn.textContent = `📰 Local News: ${isNewsEnabled() ? 'On' : 'Off'}`;
-  newsBtn.classList.toggle('sel', isNewsEnabled());
-}
-paintNews();
-newsBtn.addEventListener('click', () => {
-  setNewsEnabled(!isNewsEnabled());
-  paintNews();
-  // rebuilt on next full reload; cheap and safe
-});
+buildRunnerRow();
+paintTitle();
 
 function tryRestart() {
-  // spacebar / swipe-up quick restart, with a grace delay so a last-second
+  // tap / Space / swipe-up quick restart, with a grace delay so a last-second
   // jump input doesn't skip the score screen
-  if (state === 'over' && performance.now() - overAt > 700) startGame();
+  if (state === 'over' && performance.now() - overAt > 700 && lbSheet.classList.contains('closed')) startGame();
 }
 
 bindInput({
-  left: () => { if (state === 'running') player.moveLane(-1); },
-  right: () => { if (state === 'running') player.moveLane(1); },
+  left: () => { if (state === 'running') { player.moveLane(-1); teachDone('side'); } },
+  right: () => { if (state === 'running') { player.moveLane(1); teachDone('side'); } },
   up: () => {
     if (state === 'running') {
-      if (player.grounded && player.flying <= 0) sfx.jump();
-      player.jump();
+      if (player.jump()) sfx.jump();
+      teachDone('up');
     } else tryRestart();
   },
   down: () => {
     if (state === 'running') {
       if (player.flying <= 0) sfx.slide();
       player.slide();
+      teachDone('down');
     }
   },
-  anyKey: () => tryRestart(),
+  anyKey: () => {
+    if (state === 'paused') resumeGame();
+    else tryRestart();
+  },
 });
 window.addEventListener('keydown', (e) => {
-  if (e.target.closest?.('input, textarea')) return;
-  if (e.code === 'Space') tryRestart();
+  if (e.target.closest?.('input, textarea, button')) return;
+  if (e.code === 'Space' && state === 'ready') startGame();
+  else if (e.code === 'Space') tryRestart();
 });
 
 // ------------------------------------------------------------ loop
@@ -586,27 +964,62 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
+function placeChalk(mesh, lineDist) {
+  const z = player.zOffset - (lineDist - dist);
+  mesh.visible = lineDist > 0 && z > -125 && z < 12;
+  mesh.position.z = z;
+}
+
 function update(dt, t) {
   updateClouds(clouds, t);
   updateChurch(church, t);
 
-  if (state === 'running') {
-    const mode = MODES[modeName];
-    speed = Math.min(mode.max, speed + mode.accel * dt);
+  if (state === 'paused') {
+    if (countdownT > 0) {
+      countdownT -= dt;
+      const n = Math.ceil(countdownT / 0.8);
+      if (countdownT <= 0) {
+        countdownEl.classList.remove('on');
+        state = 'running';
+        if (player.flying > 0) sfx.jetpackPickup();
+        if (magnetT > 0) sfx.magnetPickup();
+      } else if (countdownEl.dataset.n !== String(n)) {
+        countdownEl.dataset.n = String(n);
+        countdownEl.textContent = String(n);
+        sfx.tick();
+      }
+    }
+  } else if (state === 'running') {
+    speed = speedAt(dist);
     const dz = speed * dt;
-    const difficulty = (speed - mode.base) / (mode.max - mode.base);
+    dist += dz;
 
-    chunks.update(dz, dt);
-    obstacles.update(dz, dt, t, difficulty);
+    chunks.update(dz);
+    obstacles.update(dz, dt, t);
+    course.update(dz, dist);
     people.update(dz, dt, t);
     // capture BEFORE player.update ticks the timer down, or the frame where
     // flight ends is missed and the jetpack loop never stops
     const wasFlying = player.flying > 0;
     player.update(dt, speed);
+    if (player.justJumped) { player.justJumped = false; sfx.jump(); }
 
     brickTex.offset.y += dz / BRICK_WORLD;
     score += dz;
-    scoreEl.textContent = Math.floor(score);
+
+    const b = blockAt(dist);
+    if (b !== block) enterBlock(b);
+    applySky(dist);
+
+    // personal-best chalk lines on the street
+    placeChalk(bestLineMesh, runStartBestDist > 60 ? runStartBestDist : 0);
+    placeChalk(todayLineMesh, todayLineMesh.userData.todayDist || 0);
+    if (!pbFired && runStartBestDist > 60 && dist >= runStartBestDist) {
+      pbFired = true;
+      showCallout('NEW BEST!', true);
+      sfx.best();
+      confettiBurst(effectsEl);
+    }
 
     // collectibles + power-ups
     if (magnetT > 0) magnetT -= dt;
@@ -615,9 +1028,11 @@ function update(dt, t) {
     const got = collectibles.update(dz, dt, t, player, attract, obstacles);
     let pickupPoints = 0;
     let pickupPosition = null;
+    coinChainT -= dt;
+    if (coinChainT <= 0) coinChain = 0;
     for (const it of got) {
-      if (it.cfg.power === 'magnet') { magnetT = 7; sfx.magnetPickup(); }
-      else if (it.cfg.power === 'fly') { player.startFlight(4.5); sfx.bonus(); sfx.jetpackPickup(); }
+      if (it.cfg.power === 'magnet') { magnetT = MAGNET_TIME; sfx.magnetPickup(); }
+      else if (it.cfg.power === 'fly') { player.startFlight(FLY_TIME); sfx.bonus(); sfx.jetpackPickup(); }
       else {
         const points = it.cfg.value * COIN_POINTS;
         coins += it.cfg.value;
@@ -627,16 +1042,22 @@ function update(dt, t) {
       }
     }
     if (pickupPoints > 0) {
-      sfx.coin();
+      sfx.coin(coinChain);
+      coinChain += 1;
+      coinChainT = 0.6;
       showCoinPickup(pickupPoints, pickupPosition);
-      scoreEl.textContent = Math.floor(score);
+      if (progress.bank + coins >= 500) checkUnlocks();
     }
+    scoreEl.textContent = Math.floor(score);
     if (wasFlying && player.flying <= 0) sfx.jetpackEnd();
     if (magnetT <= 0 && magnetT > -dt * 2) sfx.magnetEnd();
     coinsEl.textContent = coins;
-    powerEl.textContent =
-      player.flying > 0 ? `🍦 ${player.flying.toFixed(1)}s`
-      : magnetT > 0 ? `🧲 ${magnetT.toFixed(1)}s` : '';
+    if (player.flying > 0 || magnetT > 0) {
+      const flying = player.flying > 0;
+      powerIconEl.textContent = flying ? '🍦' : '🧲';
+      powerFillEl.style.transform = `scaleX(${Math.max(0, flying ? player.flying / FLY_TIME : magnetT / MAGNET_TIME)})`;
+      powerBarEl.classList.add('on');
+    } else powerBarEl.classList.remove('on');
 
     // invulnerability blink
     if (invuln > 0) {
@@ -648,10 +1069,16 @@ function update(dt, t) {
     // collisions (skip while flying or invulnerable)
     if (invuln <= 0 && player.flying <= 0) {
       const pz = player.zOffset;
-      const obstacleHit = obstacles.checkCollision(player.x, player.bottom, player.top, 0.32, 0.3, pz);
-      const vehicleHit = chunks.checkVehicleHit(player.x, player.bottom, player.top, pz);
-      if (obstacleHit || vehicleHit) {
-        if (obstacleHit) nearCandidates.delete(obstacleHit);
+      const obstacleHit = obstacles.checkCollision(player.x, player.bottom, player.top, 0.26, 0.3, pz);
+      if (obstacleHit && obstacleHit.teach) {
+        // first-run lesson: bump, no life lost
+        obstacleHit.teach = false;
+        invuln = 1.0;
+        shakeT = motionQuery.matches ? 0 : 0.2;
+        sfx.hit();
+        buzz(12);
+      } else if (obstacleHit) {
+        nearCandidates.delete(obstacleHit);
         onHit();
       } else {
         const nearby = obstacles.checkCollision(
@@ -661,6 +1088,7 @@ function update(dt, t) {
         updateNearMisses(pz);
       }
     }
+    updateTeach();
 
     // the black dog stays on your heels
     if (chaser.visible) {
@@ -677,9 +1105,9 @@ function update(dt, t) {
     animateDogRun(chaser, t, 14);
   }
 
-  // camera
+  // camera: portrait frames the lanes low and close; landscape keeps the vista
   let cx = player.group.position.x * 0.35;
-  let cy = 4.6, cz = 7.2;
+  let cy = view.cy;
   if (state === 'running') {
     cy += Math.sin(t * 9) * 0.03;
     if (player.flying > 0) cy += player.y * 0.35;
@@ -692,29 +1120,86 @@ function update(dt, t) {
   } else if (motionQuery.matches) {
     shakeT = 0;
   }
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(cx * 0.6, 2.2, -20);
+  camera.position.set(cx, cy, view.cz);
+  camera.lookAt(cx * 0.6, view.ly, view.lz);
 }
+
+// ------------------------------------------------------------ sizing
+// Size once per orientation (or real width change), not on every resize, so
+// Safari's toolbar showing/hiding never re-lays out the game mid-run. The
+// canvas is CSS-stretched to the viewport in between.
+
+const view = { cy: 4.6, cz: 7.2, ly: 2.2, lz: -20 };
+let sizedW = 0, sizedH = 0;
+function sizeView(force = false) {
+  const w = window.innerWidth, h = window.innerHeight;
+  const portraitNow = h > w;
+  const wasPortrait = sizedH > sizedW;
+  if (!force && w === sizedW && portraitNow === wasPortrait && Math.abs(h - sizedH) < 160) return;
+  sizedW = w; sizedH = h;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  if (portraitNow) {
+    Object.assign(view, { cy: 6.6, cz: 8.2, ly: 0.2, lz: -13 });
+    camera.fov = 62;
+  } else {
+    Object.assign(view, { cy: 4.6, cz: 7.2, ly: 2.2, lz: -20 });
+    camera.fov = 58;
+  }
+  camera.updateProjectionMatrix();
+}
+sizeView(true);
+window.addEventListener('resize', () => sizeView());
+window.addEventListener('orientationchange', () => setTimeout(() => sizeView(true), 250));
+
+applySky(0);
 tick();
 
-// ------------------------------------------------------------ resize
+// ------------------------------------------------------------ test hooks
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// debug/test hook: step the simulation manually from the console
+function setDate(str) {
+  dateOverride = str || null;
+  paintTitle();
+  return { date: today, twist: plan.twist.id, order: plan.order.slice(), streak: streakNow() };
+}
+function snapshot() {
+  return {
+    state, score: Math.floor(score), dist: Math.round(dist), speed: +speed.toFixed(2),
+    block, blockName: blockInfo(plan, block).theme.name, lives, coins,
+    lane: player.lane, x: +player.x.toFixed(2), y: +player.y.toFixed(2),
+    grounded: player.grounded, sliding: player.sliding > 0, flying: player.flying > 0,
+    twist: plan.twist.id, date: today,
+  };
+}
+let simT = 0;
 window.__csr = {
   start: startGame,
-  step: (dt = 1 / 60, t = 0) => update(dt, t),
+  step: (dt = 1 / 60, t) => { simT += dt; update(dt, t ?? simT); },
   get state() { return state; },
   get score() { return Math.floor(score); },
+  get dist() { return dist; },
   get speed() { return speed; },
   get lives() { return lives; },
   get coins() { return coins; },
+  get block() { return block; },
+  get blockName() { return blockInfo(plan, block).theme.name; },
+  get patternLog() { return course.patternLog.slice(); },
+  get plan() { return plan; },
   get nearMissStreak() { return nearMissStreak; },
-  set mode(mn) { modeName = mn; },
-  player, obstacles, chunks, collectibles,
+  setDate,
+  snapshot,
+  pause: pauseGame,
+  resume: resumeGame,
+  player, obstacles, chunks, collectibles, course, renderer,
+};
+// generic arcade test hook
+window.__T = {
+  start: startGame,
+  step: (ms = 1000 / 60) => {
+    let left = ms / 1000;
+    while (left > 1e-6) { const d = Math.min(1 / 60, left); simT += d; update(d, simT); left -= d; }
+    return snapshot();
+  },
+  state: snapshot,
+  setDate,
 };

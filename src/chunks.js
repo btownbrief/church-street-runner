@@ -1,8 +1,8 @@
 // Modular, recycled street chunks. Each chunk is a THREE.Group CHUNK_LEN long
 // containing buildings + sidewalk decor for both sides of the street.
 // Chunks slide toward the camera and are recycled to the back.
-// Chunks may define userData.tick(dt, chunk) for animated content (cars) and
-// userData.hazards[] for moving vehicle colliders.
+// Every 14th chunk is a cross street: the gate between two blocks (blocks.js).
+// The cars there wait at the crosswalk; they are scenery, not hazards.
 import * as THREE from 'three';
 import {
   makeStorefront, makeLampPost, makeBench, makeTree, makePlanter,
@@ -17,12 +17,11 @@ import {
   makeJoeBurrell, makeLeapfrog, makeDeerStatue, makeBearStatue,
   makeFirehouse, makeCityHall, makeIceCreamShop,
 } from './landmarks.js';
-import { makeNewsBanner, isNewsEnabled } from './news.js';
 
 export const CHUNK_LEN = 30;
 export const NUM_CHUNKS = 7;
 const BUILD_X = 8.2;   // building face distance from center
-const DECOR_X = 5.4;   // sidewalk decor line
+const DECOR_X = 6.4;   // sidewalk decor line, well clear of the lanes
 
 // Pack storefronts along a side with explicit widths so nothing overlaps.
 function addBuildings(g, rng, side, from = -CHUNK_LEN / 2, to = CHUNK_LEN / 2) {
@@ -50,17 +49,6 @@ function addLamps(g, offset = 0) {
   }
 }
 
-// hang a news banner across the street in this chunk (no-op if news is off);
-// high enough that the flight camera (cy ≈ 5.7 during jetpack) sees under it
-function addNewsBanner(g, z, y = 7.4) {
-  if (!isNewsEnabled()) return;
-  const banner = makeNewsBanner(y);
-  banner.position.z = z;
-  g.add(banner);
-  const prev = g.userData.onRecycle;
-  g.userData.onRecycle = () => { prev?.(); banner.userData.nextHeadline(); };
-}
-
 function put(g, obj, x, z, ry = 0) {
   obj.position.set(x, 0, z);
   obj.rotation.y = ry;
@@ -81,7 +69,6 @@ function chunkStorefront(rng) {
     if (rng() < 0.5) put(g, makeTrashCan(), side * (DECOR_X + 0.4), 3 + rng() * 4);
   }
   put(g, makeNewsBox(), (rng() < 0.5 ? -1 : 1) * (DECOR_X + 0.3), -9);
-  addNewsBanner(g, 2 + rng() * 6);
   return g;
 }
 
@@ -122,7 +109,6 @@ function chunkPatio(rng) {
   put(g, makePlanter(true), -side * DECOR_X, -8);
   put(g, makeTrashCan(), -side * DECOR_X, 4);
   put(g, makeTree(), -side * DECOR_X, 10);
-  addNewsBanner(g, -4 + rng() * 8);
   return g;
 }
 
@@ -170,48 +156,15 @@ function chunkIntersection(rng) {
   addLamps(g, -ROAD_W / 2 - 2.5);
   addLamps(g, ROAD_W / 2 + 2.5);
 
-  // banner strung across the intersection, like the Festival of Fools photos
-  addNewsBanner(g, -ROAD_W / 2 - 1.5, 7.6);
 
-  // ---- crossing cars (occasionally a parking-enforcement cart) ----
-  const hazards = [];
-  const carCount = 2;
-  for (let i = 0; i < carCount; i++) {
-    const isCart = rng() < 0.25;
-    const car = isCart ? makeParkingCart() : makeCar();
-    car.visible = false;
-    car.position.set(-24, 0, i === 0 ? -2.6 : 2.6);
-    if (i === 1) car.rotation.y = Math.PI;
+  // cars (or a parking-enforcement cart) waiting at the crosswalk
+  for (let i = 0; i < 2; i++) {
+    const car = rng() < 0.25 ? makeParkingCart() : makeCar();
+    const side = i === 0 ? -1 : 1;
+    car.position.set(side * 9.6, 0, side * 2.6);
+    car.rotation.y = i === 0 ? 0 : Math.PI;
     g.add(car);
-    hazards.push({
-      obj: car, active: false, cooldown: 2 + rng() * 5,
-      dir: i === 0 ? 1 : -1, speed: isCart ? 6 : 10,
-      half: { x: isCart ? 1.0 : 1.9, z: 0.9 }, maxY: 1.8,
-    });
   }
-  g.userData.hazards = hazards;
-  g.userData.tick = (dt, chunk) => {
-    // only run cars while the chunk is near the player
-    const near = chunk.position.z > -80 && chunk.position.z < 40;
-    for (const h of hazards) {
-      if (!h.active) {
-        if (!near) continue;
-        h.cooldown -= dt;
-        if (h.cooldown <= 0) {
-          h.active = true;
-          h.obj.visible = true;
-          h.obj.position.x = h.dir === 1 ? -24 : 24;
-        }
-      } else {
-        h.obj.position.x += h.dir * h.speed * dt;
-        if (Math.abs(h.obj.position.x) > 26) {
-          h.active = false;
-          h.obj.visible = false;
-          h.cooldown = 3 + Math.random() * 6;
-        }
-      }
-    }
-  };
   return g;
 }
 
@@ -228,7 +181,6 @@ function chunkTrees(rng) {
   put(g, makeBike(), (rng() < 0.5 ? -1 : 1) * (DECOR_X - 0.5), 13, Math.PI / 2 + rng());
   put(g, makeBoulderCluster(), -DECOR_X - 0.3, -4);
   put(g, makeBench(true), DECOR_X - 0.4, -2, Math.PI);
-  addNewsBanner(g, 4 + rng() * 6);
   return g;
 }
 
@@ -267,13 +219,6 @@ function chunkFestival(rng) {
   }
   put(g, makeFoodCart(), DECOR_X + 0.6, -8, -Math.PI / 2 - 0.2);
   put(g, makeTrashCan(), DECOR_X - 0.5, -3);
-  // optional live-news banner across the street
-  if (isNewsEnabled()) {
-    const banner = makeNewsBanner();
-    banner.position.z = 0;
-    g.add(banner);
-    g.userData.onRecycle = () => banner.userData.nextHeadline();
-  }
   return g;
 }
 
@@ -353,101 +298,108 @@ function chunkIceCream(rng) {
   put(g, makeBench(true), DECOR_X - 0.4, 0, Math.PI);
   put(g, makeTrashCan(), -DECOR_X - 0.6, 2);
   put(g, makePlanter(true), DECOR_X + 0.4, 8);
-  addNewsBanner(g, 10);
   return g;
 }
 
 const BUILDERS = [
-  [chunkStorefront, 2],
-  [chunkStorefrontJazz, 1],
-  [chunkPatio, 2],
-  [chunkIntersection, 2],
-  [chunkTrees, 2],
-  [chunkConstruction, 1],  // deliberately rare
-  [chunkFestival, 1],
-  [chunkPark, 1],
-  [chunkFirehouse, 1],
-  [chunkIceCream, 1],
+  ['storefront', chunkStorefront, 2],
+  ['jazz', chunkStorefrontJazz, 1],
+  ['patio', chunkPatio, 2],
+  ['trees', chunkTrees, 2],
+  ['construction', chunkConstruction, 2],
+  ['festival', chunkFestival, 2],
+  ['park', chunkPark, 1],
+  ['firehouse', chunkFirehouse, 1],
+  ['icecream', chunkIceCream, 1],
 ];
+export const CORNER_EVERY = 14; // chunks per block
 
 export class ChunkManager {
   constructor(scene) {
     this.scene = scene;
+    this.pending = shuffle(BUILDERS.flatMap(([id, build, n]) => Array.from({ length: n }, () => ({ id, build }))));
     this.pool = [];
-    for (const [build, copies] of BUILDERS) {
-      for (let v = 0; v < copies; v++) this.pool.push(build(Math.random));
-    }
-    this.chunks = [];
     this.spare = [];
+    this.corners = [chunkIntersection(Math.random), chunkIntersection(Math.random)];
+    for (const c of this.corners) c.userData.kind = 'corner';
+    // build just enough to lay out the street now, the rest in idle time
+    while (this.pool.length < NUM_CHUNKS) this.#buildOne();
+    this.biasFor = null; // (chunk sequence index) => { kind: weight }
+    this.chunks = [];
     this.#layout();
+    this.#idleBuild();
+  }
+
+  #buildOne() {
+    const p = this.pending.shift();
+    if (!p) return null;
+    const g = p.build(Math.random);
+    g.userData.kind = p.id;
+    this.pool.push(g);
+    return g;
+  }
+
+  #idleBuild() {
+    const ric = window.requestIdleCallback || ((fn) => setTimeout(fn, 120));
+    const step = () => {
+      const g = this.#buildOne();
+      if (!g) return;
+      this.spare.push(g);
+      ric(step, { timeout: 1500 });
+    };
+    ric(step, { timeout: 1500 });
+  }
+
+  #pick(seq) {
+    if (seq % CORNER_EVERY === 0) {
+      return this.corners.find((c) => !this.chunks.includes(c)) || this.corners[0];
+    }
+    const bias = this.biasFor?.(seq) || {};
+    const total = this.spare.reduce((s, c) => s + (bias[c.userData.kind] || 1), 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < this.spare.length; i++) {
+      r -= bias[this.spare[i].userData.kind] || 1;
+      if (r <= 0) return this.spare.splice(i, 1)[0];
+    }
+    return this.spare.pop();
   }
 
   #layout() {
-    const order = shuffle([...this.pool.keys()]);
+    for (const c of this.chunks) this.scene.remove(c);
     this.chunks = [];
-    this.spare = [];
-    for (let i = 0; i < this.pool.length; i++) {
-      const chunk = this.pool[order[i]];
-      if (i < NUM_CHUNKS) {
-        chunk.position.z = -i * CHUNK_LEN;
-        this.scene.add(chunk);
-        this.chunks.push(chunk);
-      } else {
-        this.spare.push(chunk);
-      }
-    }
+    this.spare = shuffle([...this.pool]);
+    this.seq = 0;
+    for (let i = 0; i < NUM_CHUNKS; i++) this.#append(-i * CHUNK_LEN);
   }
 
-  update(dz, dt) {
+  #append(z) {
+    const chunk = this.#pick(this.seq);
+    this.seq += 1;
+    chunk.position.z = z;
+    this.scene.add(chunk);
+    this.chunks.push(chunk);
+    return chunk;
+  }
+
+  update(dz) {
     let farthestZ = Infinity;
     for (const c of this.chunks) {
       c.position.z += dz;
-      c.userData.tick?.(dt, c);
       farthestZ = Math.min(farthestZ, c.position.z);
     }
-    for (let i = 0; i < this.chunks.length; i++) {
+    for (let i = this.chunks.length - 1; i >= 0; i--) {
       const c = this.chunks[i];
       if (c.position.z > CHUNK_LEN * 1.2) {
-        const swapIdx = Math.floor(Math.random() * this.spare.length);
-        const incoming = this.spare[swapIdx];
-        this.spare[swapIdx] = c;
+        this.chunks.splice(i, 1);
         this.scene.remove(c);
-        incoming.position.z = farthestZ - CHUNK_LEN;
-        incoming.userData.onRecycle?.();
-        this.scene.add(incoming);
-        this.chunks[i] = incoming;
+        if (c.userData.kind !== 'corner') this.spare.push(c);
+        const incoming = this.#append(farthestZ - CHUNK_LEN);
         farthestZ = incoming.position.z;
       }
     }
   }
 
-  // vehicle collision test against the player box
-  checkVehicleHit(px, pBottom, pTop, pz = 0) {
-    for (const c of this.chunks) {
-      const hazards = c.userData.hazards;
-      if (!hazards) continue;
-      for (const h of hazards) {
-        if (!h.active) continue;
-        const wz = c.position.z + h.obj.position.z;
-        if (Math.abs(wz - pz) > h.half.z + 0.3) continue;
-        if (Math.abs(h.obj.position.x - px) > h.half.x + 0.32) continue;
-        if (pBottom < h.maxY && pTop > 0) return h;
-      }
-    }
-    return null;
-  }
-
   reset() {
-    for (const c of this.chunks) this.scene.remove(c);
-    for (const c of this.pool) {
-      if (c.userData.hazards) {
-        for (const h of c.userData.hazards) {
-          h.active = false;
-          h.obj.visible = false;
-          h.cooldown = 2 + Math.random() * 5;
-        }
-      }
-    }
     this.#layout();
   }
 }

@@ -87,11 +87,14 @@ function makeJetpackPickup() {
 
 // The creemee IS the flight power-up — Vermont sugar rush.
 const KINDS = {
-  coin: { build: makeCoin, value: 1, pool: 30 },
-  creemee: { build: makeCreemee, power: 'fly', pool: 2 },
+  coin: { build: makeCoin, value: 1, pool: 90 },
+  creemee: { build: makeCreemee, power: 'fly', pool: 3 },
   magnet: { build: makeMagnetPickup, power: 'magnet', pool: 2 },
 };
 
+// Coins no longer pick their own lanes: course.js places them along each
+// pattern's safe route (a line through the open lane, an arc over a low prop,
+// a low line under a gate), so the coins teach the move.
 export class Collectibles {
   constructor(scene) {
     this.scene = scene;
@@ -101,100 +104,60 @@ export class Collectibles {
         const obj = cfg.build();
         obj.visible = false;
         scene.add(obj);
-        this.pool.push({ obj, kind, cfg, active: false });
+        this.pool.push({ obj, kind, cfg, active: false, baseY: 1.05 });
       }
     }
-    this.nextSpawnZ = 0;
-    this.sincePower = 0;
   }
 
   reset() {
     for (const it of this.pool) { it.active = false; it.obj.visible = false; }
-    this.nextSpawnZ = -30;
-    this.sincePower = 0;
   }
 
   acquire(kind) {
     return this.pool.find((it) => !it.active && it.kind === kind) || null;
   }
 
-  // true if an obstacle sits in/near this lane anywhere along the coin line
-  laneBlocked(lane, zStart, zEnd, obstacles) {
-    if (!obstacles) return false;
-    const lx = LANES[lane];
-    for (const o of obstacles.active) {
-      const oz = o.obj.position.z;
-      if (oz < zEnd - 2.5 || oz > zStart + 2.5) continue;
-      if (Math.abs(o.obj.position.x - lx) < 1.3) return true;
-      if (o.type.sub && Math.abs(o.obj.position.x + o.type.sub[0].dx - lx) < 1.2) return true;
-    }
-    return false;
-  }
-
-  spawnLine(z, obstacles) {
-    const n = 4 + Math.floor(Math.random() * 3);
-    const zEnd = z - (n + 1) * 2.2;
-    // pick a lane with no obstacles along the whole line
-    const lanes = [0, 1, 2].sort(() => Math.random() - 0.5);
-    const lane = lanes.find((L) => !this.laneBlocked(L, z, zEnd, obstacles));
-    if (lane === undefined) return; // everywhere is contested — skip this line
-    this.sincePower += 1;
-    // occasionally lead the line with a power-up (creemee = flight, magnet)
-    let head = null;
-    const roll = Math.random();
-    if (this.sincePower > 4 && roll < 0.24) {
-      head = this.acquire(roll < 0.12 ? 'magnet' : 'creemee');
-      if (head) this.sincePower = 0;
-    }
-    let zi = z;
-    if (head) {
-      head.active = true;
-      head.obj.position.set(LANES[lane], 1.05, zi);
-      head.obj.visible = true;
-      zi -= 2.2;
-    }
-    for (let i = 0; i < n; i++) {
-      const c = this.acquire('coin');
-      if (!c) break;
-      c.active = true;
-      c.obj.position.set(LANES[lane], 1.05, zi - i * 2.0);
-      c.obj.visible = true;
-    }
+  // place one pickup at a world position; returns false if the pool is dry
+  place(kind, x, y, z) {
+    const it = this.acquire(kind);
+    if (!it) return false;
+    it.active = true;
+    it.baseY = y;
+    it.obj.userData.lift = 0;
+    it.obj.position.set(x, y, z);
+    it.obj.visible = true;
+    return true;
   }
 
   // returns array of pickups collected this frame
   update(dz, dt, t, player, magnetOn, obstacles) {
     const got = [];
-    this.nextSpawnZ += dz;
-    if (this.nextSpawnZ > -40) {
-      this.spawnLine(-135 - Math.random() * 8, obstacles);
-      this.nextSpawnZ = -40 - (14 + Math.random() * 22);
-    }
     const px = player.x, py = player.y + 1.0;
+    const pz = player.zOffset;
     for (const it of this.pool) {
       if (!it.active) continue;
       const o = it.obj;
       o.position.z += dz;
       o.rotation.y += dt * 3;
-      const bob = 1.05 + Math.sin(t * 4 + o.position.z * 0.5) * 0.08;
+      const bob = it.baseY + Math.sin(t * 4 + o.position.z * 0.5) * 0.06;
       if (o.userData.lift === undefined || !magnetOn) o.userData.lift = 0;
       o.position.y = bob + o.userData.lift;
       if (magnetOn) {
-        const dx = px - o.position.x, dyz = -o.position.z;
+        const dx = px - o.position.x, dyz = pz - o.position.z;
         const dist = Math.hypot(dx, dyz);
-        if (dist < 7 && o.position.z > -10) {
+        if (dist < 7 && o.position.z > pz - 10) {
           o.position.x += dx * Math.min(1, dt * 8);
-          o.position.z += (0 - o.position.z) * Math.min(1, dt * 6);
+          o.position.z += (pz - o.position.z) * Math.min(1, dt * 6);
           // pull vertically too, so coins rise to a flying player
           o.userData.lift += (py - o.position.y) * Math.min(1, dt * 8);
         }
       }
-      // if a moving obstacle drifted onto a coin, remove the coin so it
-      // never visually merges with (or baits you into) an obstacle
+      // a walker that strolled onto a coin swallows it, so a coin never
+      // baits you into someone
       if (obstacles && it.kind === 'coin') {
-        const hidden = obstacles.active.some((ob) =>
-          Math.abs(ob.obj.position.z - o.position.z) < ob.type.half.z + 1.0 &&
-          Math.abs(ob.obj.position.x - o.position.x) < ob.type.half.x + 0.8);
+        const hidden = obstacles.active.some((ob) => ob.type.cell === 'W' &&
+          Math.abs(ob.obj.position.z - o.position.z) < ob.type.half.z + 0.6 &&
+          Math.abs(ob.obj.position.x - o.position.x) < ob.type.half.x + 0.5);
         if (hidden) {
           it.active = false;
           o.visible = false;
@@ -206,9 +169,9 @@ export class Collectibles {
         o.visible = false;
         continue;
       }
-      // pickup check
-      if (Math.abs(o.position.z) < 0.9 && Math.abs(o.position.x - px) < 0.75 &&
-          Math.abs(o.position.y - py) < 1.4) {
+      // pickup check: tight vertically so an arc over a prop needs the jump
+      if (Math.abs(o.position.z - pz) < 0.9 && Math.abs(o.position.x - px) < 0.75 &&
+          Math.abs(o.position.y - py) < (magnetOn ? 1.6 : 0.85)) {
         it.active = false;
         o.visible = false;
         got.push(it);

@@ -2,7 +2,8 @@
 // Call unlock() from a user gesture before anything will play.
 let ctx = null;
 let master = null;
-let muted = localStorage.getItem('csr-mute') === 'on';
+let muted = false;
+try { muted = localStorage.getItem('csr-mute') === 'on'; } catch { /* storage blocked */ }
 
 function ac() {
   if (!ctx) {
@@ -22,7 +23,7 @@ export function unlock() {
 export function isMuted() { return muted; }
 export function setMuted(on) {
   muted = on;
-  localStorage.setItem('csr-mute', on ? 'on' : 'off');
+  try { localStorage.setItem('csr-mute', on ? 'on' : 'off'); } catch { /* storage blocked */ }
   if (master) master.gain.value = on ? 0 : 0.5;
 }
 
@@ -150,7 +151,18 @@ export const sfx = {
   click: () => tone(620, 0.06, 'square', 0.1),
   jump: () => tone(280, 0.2, 'sine', 0.22, 560),
   slide: () => noiseBurst(0.22, 900, 0.2),
-  coin: () => { tone(1320, 0.07, 'square', 0.1); tone(1660, 0.1, 'square', 0.1, null, 0.06); },
+  // coins in a quick chain climb a major scale, then wrap
+  coin: (step = 0) => {
+    const f = 1320 * Math.pow(2, [0, 2, 4, 5, 7, 9, 11, 12][step % 8] / 12);
+    tone(f, 0.07, 'square', 0.09); tone(f * 1.26, 0.1, 'square', 0.09, null, 0.06);
+  },
+  block: () => {
+    noiseBurst(0.35, 1800, 0.12);
+    tone(660, 0.12, 'triangle', 0.13, null, 0.08);
+    tone(990, 0.22, 'triangle', 0.13, null, 0.18);
+  },
+  unlock: () => { tone(784, 0.12, 'triangle', 0.15); tone(988, 0.12, 'triangle', 0.15, null, 0.1); tone(1319, 0.3, 'triangle', 0.16, null, 0.2); },
+  tick: () => tone(880, 0.08, 'sine', 0.14),
   bonus: () => { tone(880, 0.09, 'triangle', 0.16); tone(1100, 0.09, 'triangle', 0.16, null, 0.08); tone(1470, 0.16, 'triangle', 0.16, null, 0.16); },
   magnetPickup: () => { tone(220, 0.3, 'sawtooth', 0.14, 880); magnetStart(); },
   magnetEnd: () => magnetStop(),

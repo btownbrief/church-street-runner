@@ -58,6 +58,10 @@ export const MAT = {
   umbGreen: new THREE.MeshLambertMaterial({ color: 0x2f6b4f, side: THREE.DoubleSide }),
   umbCream: new THREE.MeshLambertMaterial({ color: 0xe9e2cf, side: THREE.DoubleSide }),
   orange: new THREE.MeshLambertMaterial({ color: 0xe8722a }),
+  // the slide gate owns this colour: nothing else in the lanes is safety orange
+  gateOrange: new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0x5a2400 }),
+  barrierYellow: new THREE.MeshLambertMaterial({ color: 0xe8c22a }),
+  evergreen: new THREE.MeshLambertMaterial({ color: 0x2f5e3a }),
   safetyStripe: new THREE.MeshLambertMaterial({ color: 0xf5f0e6 }),
   cardboard: new THREE.MeshLambertMaterial({ color: 0xb08d5e }),
   planterClay: new THREE.MeshLambertMaterial({ color: 0x7d4b35 }),
@@ -346,18 +350,18 @@ export function makeUmbrellaTable(mat) {
 }
 
 export function makeBarrier() {
-  // orange-striped construction barricade
+  // yellow-and-black construction sawhorse (orange belongs to the slide gate)
   const g = new THREE.Group();
   for (const z of [-0.7, 0.7]) {
-    const legA = box(0.07, 1.0, 0.07, MAT.orange, 0.2, 0.5, z);
+    const legA = box(0.07, 1.0, 0.07, MAT.barrierYellow, 0.2, 0.5, z);
     legA.rotation.z = -0.35;
-    const legB = box(0.07, 1.0, 0.07, MAT.orange, -0.2, 0.5, z);
+    const legB = box(0.07, 1.0, 0.07, MAT.barrierYellow, -0.2, 0.5, z);
     legB.rotation.z = 0.35;
     g.add(legA, legB);
   }
-  g.add(box(0.1, 0.28, 1.7, MAT.orange, 0, 0.82, 0));
-  g.add(box(0.11, 0.09, 1.7, MAT.safetyStripe, 0, 0.82, 0));
-  g.add(box(0.1, 0.2, 1.7, MAT.orange, 0, 0.35, 0));
+  g.add(box(0.1, 0.28, 1.7, MAT.barrierYellow, 0, 0.82, 0));
+  g.add(box(0.11, 0.09, 1.7, MAT.ironBlack, 0, 0.82, 0));
+  g.add(box(0.1, 0.2, 1.7, MAT.barrierYellow, 0, 0.35, 0));
   return shadow(g);
 }
 
@@ -470,17 +474,45 @@ export function makeNewsBox() {
   return shadow(g);
 }
 
-// temporary event banner strung between two poles — slide under it
+// temporary event banner strung between two poles — slide under it.
+// Safety orange with white stripes: "duck" has one colour on this street.
 export function makeBannerGate() {
   const g = new THREE.Group();
   for (const z of [-1.0, 1.0]) {
-    g.add(cyl(0.05, 0.07, 2.5, MAT.ironBlack, 0, 1.25, z));
+    g.add(cyl(0.06, 0.08, 2.5, MAT.trimWhite, 0, 1.25, z));
     g.add(cyl(0.18, 0.2, 0.08, MAT.ironBlack, 0, 0.04, z));
   }
-  const banner = box(0.06, 0.75, 2.2, MAT.flag[3], 0, 1.85, 0);
-  g.add(banner);
-  g.add(box(0.07, 0.1, 2.2, MAT.safetyStripe, 0, 2.26, 0));
-  g.add(box(0.07, 0.1, 2.2, MAT.safetyStripe, 0, 1.46, 0));
+  g.add(box(0.08, 0.8, 2.2, MAT.gateOrange, 0, 1.87, 0));
+  g.add(box(0.09, 0.12, 2.2, MAT.trimWhite, 0, 2.3, 0));
+  g.add(box(0.09, 0.12, 2.2, MAT.trimWhite, 0, 1.45, 0));
+  g.add(box(0.09, 0.1, 2.2, MAT.trimWhite, 0, 1.87, 0));
+  return shadow(g);
+}
+
+// tall stack of delivery boxes on a pallet (solid: go around)
+export function makeBoxStack() {
+  const g = new THREE.Group();
+  g.add(box(1.0, 0.14, 0.9, MAT.woodLight, 0, 0.07, 0));
+  g.add(box(0.9, 0.6, 0.8, MAT.cardboard, 0, 0.44, 0));
+  g.add(box(0.82, 0.55, 0.74, MAT.cardboard, 0.03, 1.02, -0.02));
+  g.add(box(0.74, 0.5, 0.7, MAT.cardboard, -0.04, 1.55, 0.02));
+  g.add(box(0.6, 0.42, 0.6, MAT.cardboard, 0.02, 2.0, 0));
+  g.add(box(0.92, 2.05, 0.06, MAT.trimDark, 0, 1.1, 0)); // strap
+  return shadow(g);
+}
+
+// potted evergreen in a big planter (solid: go around)
+export function makeTallPlanter() {
+  const g = new THREE.Group();
+  g.add(box(1.0, 0.7, 1.0, MAT.planterClay, 0, 0.35, 0));
+  g.add(box(1.08, 0.08, 1.08, MAT.stoneGray, 0, 0.72, 0));
+  const c1 = new THREE.Mesh(CONE, MAT.evergreen);
+  c1.scale.set(0.62, 1.3, 0.62);
+  c1.position.y = 1.35;
+  const c2 = new THREE.Mesh(CONE, MAT.leafGreen);
+  c2.scale.set(0.46, 0.95, 0.46);
+  c2.position.y = 2.0;
+  g.add(c1, c2);
   return shadow(g);
 }
 
