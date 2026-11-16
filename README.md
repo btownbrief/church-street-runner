@@ -24,7 +24,7 @@ https://play.btownbrief.com/church-street-runner/.
 - localStorage keys `csr-best`, `csr-char`, `csr-mode`, `csr-news`, `csr-mute`,
   `btown-player-id`, `btown-player-token`, `btown-player-name`.
 - Keys added in the Nov 2026 upgrade: `csr-best-dist`, `csr-day`, `csr-streak`,
-  `csr-bank`, `csr-far`, `csr-unlocked`, `csr-taught`.
+  `csr-bank`, `csr-far`, `csr-unlocked`, `csr-taught`, `csr-goal`.
 
 ## Controls
 
@@ -35,24 +35,38 @@ https://play.btownbrief.com/church-street-runner/.
 
 ## How a run works
 
-- **Blocks.** The street is cut into 420 m blocks. Each starts at a cross
+- **Blocks.** The street is cut into 300 m blocks. Each starts at a cross
   street (coins only for 30 m, a breather), has a theme (Morning Stroll, Lunch
   Rush, Delivery Hour, Dogs Off Leash, Festival, Night Market) and its own time
-  of day. After six blocks it loops as Day 2 with harder combinations.
+  of day. Night begins about 1:50 in. After six blocks it loops as Day 2 with
+  harder combinations. Speed is `min(28, 10 + 1.5*(block-1) + 1.8*progress)`.
+- **Run order.** The middle blocks (Lunch Rush, Delivery Hour, Dogs Off Leash)
+  are dealt fresh every run, and block 2 never repeats the last run's.
 - **Patterns.** Obstacles come from authored patterns in tiers (`src/course.js`);
-  block 3 is where rows first force a jump or a slide. Coins trace the safe
+  tiers by block are 1, 2, 2, 3, 4, 4, so block 4 (about 900 m) is where rows
+  first force a jump or a slide. New players get a gentle 200 m opening with
+  the centre lane clear; once you have reached block 3, block 1 opens on a
+  walker or solid and mixes tier 2 into every other pattern. Coins trace the safe
   route: a line through the open lane, an arc over a low prop, a low line under
   an orange gate.
 - **Hazard colours.** Low props: jump. Tall things and people: go around.
   Safety-orange gates: slide. Cars wait at the crosswalks; they never hit you.
+  From golden hour on, the sky and fog carry the colour while the light on the
+  street stays near white, and hazards get a small self-light (gates glow
+  orange), so the colours mean the same thing at night. Decor that looks like
+  a hazard (bikes, boulders, sandwich boards) sits back by the shop fronts.
 - **Lives.** Three. The black dog shows up on your first crash and catches you
   on the last.
-- **Daily.** The America/New_York date picks the order of the middle blocks and
-  one twist (Dog Day, Creemee Day, Maple Rush, Festival Day, Night Owl). Daily
-  streak and today's best show on the title.
-- **Goals.** Four starter runners, four more to unlock (reach block 3, reach
-  block 5, 500 lifetime coins, finish block 6). Your best distance is chalked
-  on the street with a pole and sign on each side.
+- **Daily.** The America/New_York date picks one twist (Dog Day, Creemee Day,
+  Maple Rush, Festival Day, Night Owl) and one goal that suits it (reach block
+  4 or 5, 120 or 200 coins in a run, clear a block without a hit, 3 close calls
+  in a row). The goal shows on the title and on the game-over screen until it
+  is done, then a stamp. The streak counts days in a row with the goal done;
+  at a 3-day streak the ring under your runner turns gold.
+- **Goals.** Four starter runners, four more to unlock (reach block 4, reach
+  block 6, 500 lifetime coins, finish block 6). Your best distance is chalked
+  across the street as a thick cream band with poles and signs, and a
+  "BEST in 140 m" countdown runs under the score for the last 200 m.
 
 ## Test hooks
 

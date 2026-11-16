@@ -1,7 +1,7 @@
 // Modular, recycled street chunks. Each chunk is a THREE.Group CHUNK_LEN long
 // containing buildings + sidewalk decor for both sides of the street.
 // Chunks slide toward the camera and are recycled to the back.
-// Every 14th chunk is a cross street: the gate between two blocks (blocks.js).
+// Every 10th chunk is a cross street: the gate between two blocks (blocks.js).
 // The cars there wait at the crosswalk; they are scenery, not hazards.
 import * as THREE from 'three';
 import {
@@ -17,11 +17,15 @@ import {
   makeJoeBurrell, makeLeapfrog, makeDeerStatue, makeBearStatue,
   makeFirehouse, makeCityHall, makeIceCreamShop,
 } from './landmarks.js';
+import { BLOCK_LEN } from './blocks.js';
 
 export const CHUNK_LEN = 30;
 export const NUM_CHUNKS = 7;
 const BUILD_X = 8.2;   // building face distance from center
 const DECOR_X = 6.4;   // sidewalk decor line, well clear of the lanes
+// props that double as lane hazards (bikes, boulders, sandwich boards) sit
+// back by the shop fronts, so nothing that looks like a hazard is near a lane
+const SHOP_X = 7.5;
 
 // Pack storefronts along a side with explicit widths so nothing overlaps.
 function addBuildings(g, rng, side, from = -CHUNK_LEN / 2, to = CHUNK_LEN / 2) {
@@ -65,7 +69,7 @@ function chunkStorefront(rng) {
   for (const side of [-1, 1]) {
     if (rng() < 0.8) put(g, makeTree(), side * DECOR_X, 8 + rng() * 4);
     if (rng() < 0.7) put(g, makeBench(rng() < 0.5), side * (DECOR_X - 0.4), -12 + rng() * 6, side === -1 ? 0 : Math.PI);
-    if (rng() < 0.5) put(g, makeSandwichBoard(), side * (DECOR_X - 0.7), rng() * 10 - 2, rng() * Math.PI);
+    if (rng() < 0.5) put(g, makeSandwichBoard(), side * SHOP_X, rng() * 10 - 2, Math.PI / 2 + (rng() - 0.5) * 0.4);
     if (rng() < 0.5) put(g, makeTrashCan(), side * (DECOR_X + 0.4), 3 + rng() * 4);
   }
   put(g, makeNewsBox(), (rng() < 0.5 ? -1 : 1) * (DECOR_X + 0.3), -9);
@@ -178,8 +182,8 @@ function chunkTrees(rng) {
     }
     if (rng() < 0.7) put(g, makePlanter(), side * (DECOR_X - 0.8), rng() * 16 - 8);
   }
-  put(g, makeBike(), (rng() < 0.5 ? -1 : 1) * (DECOR_X - 0.5), 13, Math.PI / 2 + rng());
-  put(g, makeBoulderCluster(), -DECOR_X - 0.3, -4);
+  put(g, makeBike(), (rng() < 0.5 ? -1 : 1) * SHOP_X, 13, Math.PI / 2);
+  put(g, makeBoulderCluster(), -SHOP_X, -4, Math.PI / 2);
   put(g, makeBench(true), DECOR_X - 0.4, -2, Math.PI);
   return g;
 }
@@ -208,7 +212,9 @@ function chunkFestival(rng) {
   addLamps(g, -5);
   addLamps(g, 12);
   for (const z of [-10, 10]) {
-    const b = makeBunting(16.5, 6.2);
+    // strung above the portrait camera (6.6 m), so the flags pass over the
+    // top of the screen instead of sweeping across the runner
+    const b = makeBunting(16.5, 8.8);
     b.position.set(0, 0, z);
     g.add(b);
   }
@@ -272,12 +278,12 @@ function chunkFirehouse(rng) {
   // the leapfrog kids play out front
   put(g, makeLeapfrog(), -DECOR_X + 0.4, 6, Math.PI + 0.4); // kids face the runner
   // boulders + bench, straight out of the reference photo
-  put(g, makeBoulderCluster(), DECOR_X - 0.2, -8);
+  put(g, makeBoulderCluster(), SHOP_X, -8, Math.PI / 2);
   put(g, makeBench(true), DECOR_X - 0.6, -4.5, Math.PI);
   put(g, makeTree(), DECOR_X + 0.4, -12);
   put(g, makeTree(), -DECOR_X - 0.4, 12);
   // art-fair sandwich board
-  put(g, makeSandwichBoard(), -DECOR_X - 0.9, -1, 0.4);
+  put(g, makeSandwichBoard(), -SHOP_X, -1, Math.PI / 2);
   return g;
 }
 
@@ -312,7 +318,7 @@ const BUILDERS = [
   ['firehouse', chunkFirehouse, 1],
   ['icecream', chunkIceCream, 1],
 ];
-export const CORNER_EVERY = 14; // chunks per block
+export const CORNER_EVERY = BLOCK_LEN / CHUNK_LEN; // chunks per block (10)
 
 export class ChunkManager {
   constructor(scene) {

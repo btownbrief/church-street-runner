@@ -13,7 +13,10 @@ const FIRST_COINS = 15;      // first coin line, metres from the start
 const FIRST_ROW = 45;        // first obstacle, metres from the start
 const PRE_CORNER = 16;       // no obstacles this close before a cross street
 const OPENING = 200;         // first 200 m: a gentle first wave, centre lane kept clear
+                             // (new players only; returning players skip it)
 const OPENING_SET = ['single', 'pair', 'hop-line', 'stagger'];
+const RETURN_T2 = ['post', 'walker-pair', 'gate'];
+const OPEN_POST = { name: 'post', tier: 2, rows: ['.S.'] };
 
 export const PATTERNS = [
   // tier 1 — low props only; jumping is optional but pays (coin arcs)
@@ -23,6 +26,7 @@ export const PATTERNS = [
   { name: 'stagger', tier: 1, rows: ['J..', '..J'] },
   { name: 'gap', tier: 1, rows: ['.J.', 'J.J'] },
   // tier 2 — solids and walkers; you have to read the street
+  { name: 'post', tier: 2, rows: ['S..'], shift: true },
   { name: 'slalom', tier: 2, rows: ['S..', '..S', 'S..'] },
   { name: 'split', tier: 2, rows: ['S.S', '.S.'] },
   { name: 'walker-pair', tier: 2, rows: ['W.W'] },
@@ -86,9 +90,11 @@ export class Course {
     this.reset({ plan: null });
   }
 
-  reset({ plan, tutorial = false, twist = null }) {
+  reset({ plan, tutorial = false, twist = null, returning = false }) {
     this.plan = plan;
     this.twist = twist;
+    this.returning = returning;
+    this.openPicks = 0;
     this.queue = [];
     this.cursor = -FIRST_ROW;    // world z of the next row
     this.lastName = '';
@@ -156,9 +162,22 @@ export class Course {
     const between = Math.max(16, speed * 1.3);
     const blockEnd = info.block * BLOCK_LEN - PRE_CORNER;
 
-    const opening = info.block === 1 && rowDist < OPENING;
+    const opening = info.block === 1 && rowDist < OPENING && !this.returning;
     let picks;
-    if (opening) {
+    if (info.block === 1 && this.returning) {
+      // returning players: block 1 alternates tier 1 and the one-row tier 2
+      // patterns, opening on a solid in the centre lane so the first seconds
+      // ask for a real move. The multi-row tier 2 patterns wait for block 2.
+      const n = this.openPicks++;
+      if (n === 0) {
+        picks = [OPEN_POST];
+        this.lastName = 'post';
+      } else if (n % 2 === 0) {
+        const pool = PATTERNS.filter((p) => RETURN_T2.includes(p.name) && p.name !== this.lastName);
+        picks = [pool[Math.floor(Math.random() * pool.length)]];
+        this.lastName = picks[0].name;
+      } else picks = [this.#pick(1, 1)];
+    } else if (opening) {
       const pool = PATTERNS.filter((p) => OPENING_SET.includes(p.name) && p.name !== this.lastName);
       picks = [pool[Math.floor(Math.random() * pool.length)]];
       this.lastName = picks[0].name;

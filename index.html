@@ -84,6 +84,14 @@
     .block-card b { color: #7dff9b; margin-left: 8px; }
     .block-card.show ~ #blockName, #hud.carding #blockName { opacity: 0; }
     .block-card.show { animation: card-in 1.6s ease-out forwards; }
+    .pb-count {
+      margin-top: 6px; display: inline-block; padding: 3px 10px; border-radius: 999px;
+      background: rgba(36, 22, 16, 0.55); color: #c8ffd5; text-shadow: none;
+      font-size: 14px; font-weight: 900; letter-spacing: 0.6px; font-variant-numeric: tabular-nums;
+      opacity: 0; transform: translateY(-4px); transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .pb-count.on { opacity: 1; transform: none; }
+    .pb-count.close { background: rgba(30, 110, 60, 0.85); color: #fff; }
     .hud-coins { white-space: nowrap; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
 
     #mute {
@@ -108,8 +116,12 @@
 
     /* ---------------- effects ---------------- */
     #effects { position: fixed; inset: 0; z-index: 12; overflow: hidden; pointer-events: none; }
-    #impactFlash { position: absolute; inset: 0; opacity: 0; background: rgba(183, 34, 34, 0.34); }
-    #impactFlash.active { animation: impact-flash 0.32s ease-out; }
+    /* hit: a quick red edge vignette; the middle of the street stays clear */
+    #impactFlash {
+      position: absolute; inset: 0; opacity: 0;
+      background: radial-gradient(ellipse 72% 62% at 50% 55%, transparent 62%, rgba(196, 30, 30, 0.6) 100%);
+    }
+    #impactFlash.active { animation: impact-flash 0.15s ease-out; }
     #callout {
       position: absolute; top: calc(env(safe-area-inset-top, 0px) + 19%); left: 50%; transform: translateX(-50%);
       min-width: max-content; padding: 7px 14px; border-radius: 999px;
@@ -190,6 +202,12 @@
       font-size: 14px; font-weight: 900; letter-spacing: 1.5px; color: var(--peach);
     }
     .today-blurb { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--tan); }
+    .today-goal {
+      margin-top: 8px; font-size: 15px; font-weight: 800; color: var(--cream);
+      text-shadow: 0 1px 3px rgba(0,0,0,0.55);
+    }
+    .today-goal:empty { display: none; }
+    .today-goal.done { color: #7dff9b; }
     .stat-line { margin-top: 10px; font-size: 15px; font-weight: 800; color: var(--peach); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .stat-line:empty { display: none; }
     .runner-row {
@@ -237,7 +255,8 @@
       animation: best-pulse 0.8s ease-in-out 2;
     }
     .goal { margin-top: 16px; width: min(300px, 80vw); }
-    .goal-text { font-size: 13px; font-weight: 700; color: var(--peach); line-height: 1.35; }
+    .goal-text { font-size: 14px; font-weight: 800; color: var(--peach); line-height: 1.35; }
+    .goal-text.stamp { color: #7dff9b; }
     .goal-sub { margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--tan); opacity: 0.9; }
     .goal-bar { margin-top: 7px; height: 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
     #goalFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffb06a, #ffe8c9); border-radius: 4px; transition: width 0.6s ease-out 0.2s; }
@@ -334,6 +353,7 @@
       <div class="hud-score"><span id="score">0</span><span id="pips" aria-label="Lives"><i></i><i></i><i></i></span></div>
       <div id="blockName">Block 1 · Morning Stroll</div>
       <div id="blockCard" class="block-card"></div>
+      <div id="pbCount" class="pb-count" aria-live="off"></div>
     </div>
     <div class="hud-coins">🪙 <span id="coins">0</span></div>
   </div>
@@ -353,6 +373,7 @@
     <div class="sub">An endless runner down Burlington's Church Street</div>
     <div class="today" id="todayLine">TODAY</div>
     <div class="today-blurb" id="todayBlurb"></div>
+    <div class="today-goal" id="todayGoal"></div>
     <div class="stat-line" id="titleStats"></div>
     <div class="spacer"></div>
     <div class="runner-row" id="charRow" data-notap></div>

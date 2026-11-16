@@ -45,7 +45,7 @@ export const CHARACTERS = [
     shirt: 0xd8c39a, pants: 0x4a3a2c, shoes: 0x2b2420,
     hat: 'brim', hatColor: 0x3d2f26,
     vest: 0x7a3a5a, guitar: 0xc9883a,
-    unlock: { kind: 'block', n: 3, text: 'Reach Block 3' },
+    unlock: { kind: 'block', n: 4, text: 'Reach Block 4' },
   },
   {
     id: 'carrier',
@@ -55,7 +55,7 @@ export const CHARACTERS = [
     shirt: 0x8fb6dc, pants: 0x3e5a78, shoes: 0x1f1f22,
     hat: 'cap', hatColor: 0x3e5a78,
     satchel: 0x6b4a2f,
-    unlock: { kind: 'block', n: 5, text: 'Reach Block 5' },
+    unlock: { kind: 'block', n: 6, text: 'Reach Block 6' },
   },
   {
     id: 'chef',

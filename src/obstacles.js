@@ -15,14 +15,17 @@ import { makeDog, makePerson, animateDogRun, animateWalk } from './npcs.js';
 export const LANES = [-2.1, 0, 2.1];
 
 // Low props are collision-capped at this height whatever the model, so a
-// normal jump always clears them with room to spare.
-const JUMP_CAP = 0.8;
+// normal jump always clears them with room to spare. Their collision depth is
+// also trimmed to 80% of the model, which widens the jump window: a jump that
+// looks like it should clear does.
+const JUMP_CAP = 0.7;
+const JUMP_DEPTH = 0.8;
 // Moving obstacles only start walking toward you once they are this close,
 // so patterns keep the spacing they were authored with.
 const WALK_START_Z = -32;
 
 function jumpType(id, build, half, count = 3) {
-  return { id, cell: 'J', build, count, half, minY: 0, maxY: JUMP_CAP };
+  return { id, cell: 'J', build, count, half: { x: half.x, z: half.z * JUMP_DEPTH }, minY: 0, maxY: JUMP_CAP };
 }
 function solidType(id, build, half, extra = {}) {
   return { id, cell: 'S', build, count: 4, half, minY: 0, maxY: 2.4, ...extra };
@@ -31,7 +34,7 @@ function solidType(id, build, half, extra = {}) {
 function dogType(style) {
   return {
     id: 'dog-' + style, cell: 'D', build: () => makeDog(style), count: 3,
-    half: { x: 0.55, z: 0.45 }, minY: 0, maxY: JUMP_CAP, move: 'wander',
+    half: { x: 0.55, z: 0.45 * JUMP_DEPTH }, minY: 0, maxY: JUMP_CAP, move: 'wander',
   };
 }
 // Person walking a leashed dog: the owner is a solid you dodge, the dog
@@ -102,6 +105,39 @@ const TYPES = [
   { id: 'gate', cell: 'G', build: makeBannerGate, count: 9, half: { x: 1.05, z: 1.1 }, minY: 1.35, maxY: 2.7 },
 ];
 
+// Hazards get their own copies of their materials with a small self-light
+// in their own colour, raised as the street darkens, so props, walkers and
+// gates stay lighter than the brick at sunset and night. Gates glow orange.
+const hazardMats = new Map(); // source material -> { mat, gate }
+const LIFT_GREY = new THREE.Color(0x9a9a9a);
+// gates keep pure orange (and pure white stripes) as their self-light
+function liftMaterials(root, gate) {
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const swap = (src) => {
+      if (!src.emissive) return src;
+      const key = gate ? 'g:' + src.uuid : src.uuid;
+      let e = hazardMats.get(key);
+      if (!e) {
+        const mat = src.clone();
+        // own hue, pulled a little toward grey so near-black parts lift too
+        mat.emissive = gate ? src.color.clone() : src.color.clone().lerp(LIFT_GREY, 0.35);
+        mat.emissiveIntensity = 0;
+        e = { mat, gate };
+        hazardMats.set(key, e);
+      }
+      return e.mat;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+  });
+}
+// 0 = day, 1 = night
+export function setHazardGlow(g) {
+  for (const { mat, gate } of hazardMats.values()) {
+    mat.emissiveIntensity = gate ? 0.1 + g * 0.4 : 0.04 + g * 0.3;
+  }
+}
+
 export class ObstacleManager {
   constructor(scene) {
     this.scene = scene;
@@ -118,6 +154,7 @@ export class ObstacleManager {
           wrapper.add(worker);
           wrapper.userData.escortPerson = worker;
         }
+        liftMaterials(wrapper, type.cell === 'G');
         wrapper.visible = false;
         scene.add(wrapper);
         this.pool.push({ obj: wrapper, inner: mesh, type, active: false, lane: 0, wanderT: 0 });

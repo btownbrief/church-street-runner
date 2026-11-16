@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ChunkManager, CHUNK_LEN } from './chunks.js';
-import { ObstacleManager } from './obstacles.js';
+import { ObstacleManager, setHazardGlow } from './obstacles.js';
 import { Course } from './course.js';
 import { Player, setPlayerGlow } from './player.js';
 import { bindInput } from './input.js';
@@ -18,7 +18,7 @@ import {
   lbEnabled, getName, submitScore, renamePlayer, fetchTop, monthLabel, playerId,
 } from './leaderboard.js';
 import {
-  BLOCK_LEN, blockAt, blockInfo, speedAt, dailyPlan, nyDate, dayDiff,
+  BLOCK_LEN, blockAt, blockInfo, speedAt, dailyPlan, runOrder, nyDate, dayDiff,
 } from './blocks.js';
 
 // ------------------------------------------------------------ storage
@@ -153,9 +153,10 @@ function makeChalkLine(label, strong) {
   const g = c.getContext('2d');
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  // fog-free, so the line reads from 100 m out
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(6.8, 3.4),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+    new THREE.PlaneGeometry(strong ? 7.4 : 6.8, strong ? 4.6 : 3.4),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: !strong })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0.025;
@@ -172,8 +173,8 @@ function makeChalkLine(label, strong) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.6, 8), poleMat);
     pole.position.set(side * 3.4, 1.3, 0);
     group.add(pole);
-    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthWrite: false }));
-    sign.scale.set(1.9, 0.71, 1);
+    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthWrite: false, fog: !strong }));
+    sign.scale.set(strong ? 2.3 : 1.9, strong ? 0.86 : 0.71, 1);
     sign.position.set(side * 3.4, 2.95, 0);
     group.add(sign);
   }
@@ -181,19 +182,26 @@ function makeChalkLine(label, strong) {
   group.userData.draw = (value) => {
     const text = `${label} ${value.toLocaleString('en-US')}`;
     g.clearRect(0, 0, 512, 256);
-    g.fillStyle = strong ? 'rgba(255,250,235,0.95)' : 'rgba(255,250,235,0.75)';
-    // a slightly wobbly chalk stripe across all three lanes
-    const th = strong ? 22 : 12;
+    g.fillStyle = strong ? 'rgba(255,250,235,0.97)' : 'rgba(255,250,235,0.75)';
+    // a slightly wobbly chalk stripe across all three lanes; the best line is
+    // a thick full-width band
+    const th = strong ? 44 : 12;
+    const top = strong ? 200 : 212;
     g.beginPath();
-    g.moveTo(6, 214);
-    for (let x = 6; x <= 506; x += 20) g.lineTo(x, 212 + Math.sin(x * 0.07) * 3);
-    for (let x = 506; x >= 6; x -= 20) g.lineTo(x, 212 + th + Math.sin(x * 0.05) * 2);
+    g.moveTo(2, top + 2);
+    for (let x = 2; x <= 510; x += 20) g.lineTo(x, top + Math.sin(x * 0.07) * 3);
+    for (let x = 510; x >= 2; x -= 20) g.lineTo(x, top + th + Math.sin(x * 0.05) * 2);
     g.closePath();
     g.fill();
-    g.font = `900 ${strong ? 120 : 92}px "Avenir Next", system-ui, sans-serif`;
+    g.font = `900 ${strong ? 150 : 92}px "Avenir Next", system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'alphabetic';
-    g.fillText(text, 256, 180, 500);
+    if (strong) {
+      g.lineWidth = 10;
+      g.strokeStyle = 'rgba(36,22,16,0.55)';
+      g.strokeText(text, 256, 178, 504);
+    }
+    g.fillText(text, 256, 178, 504);
     tex.needsUpdate = true;
 
     sg.clearRect(0, 0, 256, 96);
@@ -226,6 +234,7 @@ const goalSubEl = $('goalSub'), goalTextEl = $('goalText'), goalFillEl = $('goal
 const effectsEl = $('effects'), impactFlashEl = $('impactFlash'), calloutEl = $('callout');
 const teachEl = $('teach'), teachArrowEl = $('teachArrow'), teachTextEl = $('teachText');
 const countdownEl = $('countdown');
+const pbCountEl = $('pbCount');
 const bestConfettiEl = $('bestConfetti');
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 if ('ontouchstart' in window || window.matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
@@ -277,6 +286,11 @@ let teachShown = null;   // obstacle slot whose hint is on screen
 let teachSeen = 0;
 let countdownT = 0;
 let hitStop = 0;      // a few frames of freeze on impact
+let runGoal = null;   // today's goal, tracked during the run
+let goalProg = 0;
+let goalDoneRun = false;
+let hitThisBlock = false;
+let pbCountShown = '';
 const effectTimers = new Set();
 const MAX_PARTICLES = 40;
 
@@ -284,10 +298,26 @@ function dayRecord() {
   const r = lsJSON('csr-day', null);
   return r && r.date === today ? r : { date: today, best: 0, dist: 0 };
 }
+// The streak counts days in a row on which the daily goal was done
+// (csr-streak: { last: date of the last goal done, n }).
 function streakNow() {
   const s = lsJSON('csr-streak', null);
   if (!s || !s.last) return 0;
-  return dayDiff(s.last, today) <= 1 ? s.n || 0 : 0;
+  const gap = dayDiff(s.last, today);
+  return gap >= 0 && gap <= 1 ? s.n || 0 : 0;
+}
+// today's goal record (csr-goal: { date, id, done, best })
+function goalRecord() {
+  const r = lsJSON('csr-goal', null);
+  const g = dailyPlan(today).goal;
+  return r && r.date === today && r.id === g.id ? r : { date: today, id: g.id, done: false, best: 0 };
+}
+const GOLD_STREAK = 3;
+function paintRing() {
+  // a gold ring under the runner after a 3-day goal streak
+  const gold = streakNow() >= GOLD_STREAK;
+  player.ring.material.color.setHex(gold ? 0xffc94a : 0xfff3d6);
+  player.ring.userData.gold = gold;
 }
 function bumpStreak() {
   const s = lsJSON('csr-streak', null);
@@ -410,8 +440,11 @@ function showCrashImpact() {
   if (!motionQuery.matches) impactFlashEl.classList.add('active');
   later(() => {
     if (token !== impactToken) return;
-    pipsEl.classList.remove('hit');
     impactFlashEl.classList.remove('active');
+  }, 160);
+  later(() => {
+    if (token !== impactToken) return;
+    pipsEl.classList.remove('hit');
   }, 440);
 
   const { x, y } = screenPoint(new THREE.Vector3(player.x, player.y + 0.9, player.zOffset));
@@ -445,6 +478,7 @@ function confirmNearMiss() {
   scoreEl.textContent = Math.floor(score);
   popScore();
   showCallout(`CLOSE ONE! +${bonus} · ×${nearMissStreak}`);
+  advanceGoal('close', nearMissStreak);
   sfx.nearMiss();
   buzz(8);
 }
@@ -498,7 +532,8 @@ function applySky(d) {
   MAT.glass.emissive.copy(glassEmissive).multiplyScalar(glow * 0.7);
   stripMat.color.setHex(0xb9b2a4).multiplyScalar(1 + glow * 0.25);
   setPlayerGlow(glow);
-  player.ring.material.opacity = 0.38 + glow * 0.25;
+  setHazardGlow(glow);
+  player.ring.material.opacity = (player.ring.userData.gold ? 0.6 : 0.38) + glow * 0.25;
 }
 
 function blockLabel(b) {
@@ -507,6 +542,8 @@ function blockLabel(b) {
 }
 
 function enterBlock(b) {
+  if (b > 1 && !hitThisBlock) advanceGoal('clean', 1);
+  hitThisBlock = false;
   block = b;
   blockNameEl.textContent = blockLabel(b);
   if (b > 1) {
@@ -529,7 +566,30 @@ function enterBlock(b) {
     progress.far = b;
     saveProgress(progress);
   }
+  advanceGoal('block', b);
   checkUnlocks();
+}
+
+// ------------------------------------------------------------ daily goal
+
+function advanceGoal(unit, value) {
+  if (state !== 'running' || !runGoal || goalDoneRun || runGoal.unit !== unit) return;
+  goalProg = Math.max(goalProg, value);
+  if (goalProg < runGoal.n) return;
+  goalDoneRun = true;
+  const rec = goalRecord();
+  if (rec.done) return; // already done today: nothing new to celebrate
+  rec.done = true;
+  rec.best = Math.max(rec.best || 0, goalProg);
+  lsSet('csr-goal', JSON.stringify(rec));
+  bumpStreak();
+  paintRing();
+  const st = streakNow();
+  later(() => {
+    showCallout(st >= 2 ? `GOAL DONE ✓ · 🔥 ${st} DAYS` : "TODAY'S GOAL DONE ✓", true);
+    sfx.unlock();
+    buzz(15);
+  }, unit === 'block' ? 900 : 0);
 }
 
 function checkUnlocks() {
@@ -593,8 +653,12 @@ function startGame() {
   clearRunEffects();
   closeSheet();
   today = dateOverride || nyDate();
-  plan = dailyPlan(today);
-  bumpStreak();
+  // the date picks the twist and goal; the middle blocks are dealt per run
+  plan = dailyPlan(today, runOrder());
+  runGoal = goalRecord().done ? null : plan.goal;
+  goalProg = 0;
+  goalDoneRun = false;
+  hitThisBlock = false;
   chunks.biasFor = (seq) => blockInfo(plan, Math.floor((seq * CHUNK_LEN) / BLOCK_LEN) + 1).theme.chunkBias;
   chunks.reset();
   obstacles.reset();
@@ -602,7 +666,8 @@ function startGame() {
   teaching = lsGet('csr-taught') !== '1';
   teachShown = null;
   teachSeen = 0;
-  course.reset({ plan, tutorial: teaching, twist: plan.twist.id });
+  // returning players (reached block 3 before) skip the gentle opening
+  course.reset({ plan, tutorial: teaching, twist: plan.twist.id, returning: !teaching && progress.far >= 3 });
   people.reset();
   player.reset();
   dist = 0;
@@ -625,6 +690,9 @@ function startGame() {
   todayLineMesh.userData.todayDist = rec.dist > 60 && bestDist - rec.dist > 40 ? rec.dist : 0;
   if (todayLineMesh.userData.todayDist) todayLineMesh.userData.draw(Math.floor(rec.dist));
   chaser.visible = false;
+  pbCountShown = '';
+  pbCountEl.classList.remove('on');
+  paintRing();
   state = 'running';
   document.body.classList.add('playing');
   startPanel.classList.add('hidden');
@@ -642,6 +710,7 @@ function onHit() {
   if (invuln > 0 || player.flying > 0) return;
   lives -= 1;
   nearMissStreak = 0;
+  hitThisBlock = true;
   nearCandidates.clear();
   shakeT = motionQuery.matches ? 0 : 0.4;
   showCrashImpact();
@@ -681,12 +750,14 @@ function gameOver() {
   teachEl.classList.remove('on');
   powerBarEl.classList.remove('on');
   const s = Math.floor(score);
-  const isBest = s > best;
+  // a first-ever run sets the best quietly: "NEW BEST!" needs a best to beat
+  const isBest = s > best && best > 0;
+  const firstBest = s > best && best <= 0;
   if (chaser.visible) sfx.bark();
   if (!isBest) sfx.gameover();
   overAt = performance.now();
   dogLunge = chaser.visible ? 0.45 : 0;
-  if (isBest) {
+  if (isBest || firstBest) {
     best = s;
     lsSet('csr-best', String(best));
   }
@@ -716,18 +787,38 @@ function gameOver() {
     newRunnerEl.classList.remove('hidden');
   } else newRunnerEl.classList.add('hidden');
 
+  // the goal area: today's goal until it is done, then a stamp over the
+  // next-runner bar
+  const daily = plan.goal;
+  const grec = goalRecord();
+  if (!grec.done && runGoal) {
+    grec.best = Math.max(grec.best || 0, goalProg);
+    lsSet('csr-goal', JSON.stringify(grec));
+  }
   const goal = nextGoal();
-  if (goal) {
+  goalTextEl.classList.toggle('stamp', grec.done);
+  if (!grec.done) {
+    const have = Math.min(daily.n, Math.max(goalProg, grec.best || 0));
+    goalTextEl.textContent = `🎯 Today: ${daily.text}`;
+    goalSubEl.textContent = daily.unit === 'clean'
+      ? 'Not yet. One whole block, no hits'
+      : daily.unit === 'block' ? `Today's farthest: Block ${have}` : `Today's best: ${have} of ${daily.n}`;
+    goalFillEl.style.width = '0%';
+    const pct = daily.unit === 'clean' ? 0 : Math.round((have / daily.n) * 100);
+    requestAnimationFrame(() => requestAnimationFrame(() => { goalFillEl.style.width = `${pct}%`; }));
+  } else if (goal) {
     const u = goal.c.unlock;
-    goalTextEl.textContent = `Next runner: ${goal.c.emoji} ${goal.c.name}`;
-    goalSubEl.textContent = u.kind === 'bank'
-      ? `${u.text} · ${progress.bank} so far`
-      : `${u.text} · your best: Block ${progress.far}`;
+    const st = streakNow();
+    goalTextEl.textContent = `✓ Today's goal done${st >= 2 ? ` · 🔥 ${st}-day streak` : ''}`;
+    goalSubEl.textContent = `Next runner: ${goal.c.emoji} ${goal.c.name} · ` + (u.kind === 'bank'
+      ? `${u.text} (${progress.bank} so far)`
+      : `${u.text} (best: Block ${progress.far})`);
     goalFillEl.style.width = '0%';
     requestAnimationFrame(() => requestAnimationFrame(() => { goalFillEl.style.width = `${Math.round(goal.p * 100)}%`; }));
   } else {
-    goalTextEl.textContent = 'Every runner unlocked';
-    goalSubEl.textContent = `Farthest: Block ${progress.far}`;
+    const st = streakNow();
+    goalTextEl.textContent = `✓ Today's goal done${st >= 2 ? ` · 🔥 ${st}-day streak` : ''}`;
+    goalSubEl.textContent = `Every runner unlocked · farthest: Block ${progress.far}`;
     goalFillEl.style.width = '100%';
   }
   overPanel.classList.remove('hidden');
@@ -940,12 +1031,17 @@ function buildRunnerRow() {
 }
 
 function paintTitle() {
-  if (state !== 'running') {
-    today = dateOverride || nyDate();
-    plan = dailyPlan(today);
-  }
-  $('todayLine').textContent = `TODAY · ${plan.twist.name.toUpperCase()}`;
-  $('todayBlurb').textContent = plan.twist.blurb;
+  if (state !== 'running') today = dateOverride || nyDate();
+  // keep the run's plan for the game-over screen; the title shows today's
+  const tp = dailyPlan(today);
+  if (state === 'ready') plan = tp;
+  $('todayLine').textContent = `TODAY · ${tp.twist.name.toUpperCase()}`;
+  $('todayBlurb').textContent = tp.twist.blurb;
+  const grec = goalRecord();
+  const goalEl = $('todayGoal');
+  goalEl.textContent = grec.done ? `✓ ${tp.goal.text}` : `🎯 ${tp.goal.text}`;
+  goalEl.classList.toggle('done', grec.done);
+  paintRing();
   const rec = dayRecord();
   const parts = [];
   if (rec.best > 0) parts.push(`Today ${rec.best.toLocaleString('en-US')}`);
@@ -1054,8 +1150,21 @@ function update(dt, t) {
     // personal-best chalk lines on the street
     placeChalk(bestLineMesh, runStartBestDist > 60 ? runStartBestDist : 0);
     placeChalk(todayLineMesh, todayLineMesh.userData.todayDist || 0);
+    // run-up to your best: "BEST in 140 m" for the last 200 m
+    if (!pbFired && runStartBestDist > 60) {
+      const left = runStartBestDist - dist;
+      const txt = left > 0 && left <= 200 ? `BEST in ${Math.ceil(left)} m` : '';
+      if (txt !== pbCountShown) {
+        pbCountShown = txt;
+        pbCountEl.textContent = txt;
+        pbCountEl.classList.toggle('on', !!txt);
+        pbCountEl.classList.toggle('close', left > 0 && left <= 50);
+      }
+    }
     if (!pbFired && runStartBestDist > 60 && dist >= runStartBestDist) {
       pbFired = true;
+      pbCountShown = '';
+      pbCountEl.classList.remove('on', 'close');
       showCallout('NEW BEST!', true);
       sfx.best();
       confettiBurst(effectsEl);
@@ -1086,6 +1195,7 @@ function update(dt, t) {
       coinChain += 1;
       coinChainT = 0.6;
       showCoinPickup(pickupPoints, pickupPosition);
+      advanceGoal('coins', coins);
       if (progress.bank + coins >= 500) checkUnlocks();
     }
     scoreEl.textContent = Math.floor(score);
@@ -1149,9 +1259,20 @@ function update(dt, t) {
     animateDogRun(chaser, t, 14);
   }
 
-  // camera: portrait frames the lanes low and close; landscape keeps the vista
+  // camera: portrait frames the lanes low and close; landscape keeps the vista.
+  // On the title it swings down to a close shot of your runner, above the
+  // runner chips, and eases back out when you hit RUN.
+  const camTarget = state === 'ready' ? 0 : 1;
+  camBlend += (camTarget - camBlend) * Math.min(1, dt * 4.5);
+  if (Math.abs(camTarget - camBlend) < 0.001) camBlend = camTarget;
+  const k = smooth(camBlend);
+  const hero = view.portrait ? HERO_PORTRAIT : HERO_LANDSCAPE;
+  const vcy = hero.cy + (view.cy - hero.cy) * k, vcz = hero.cz + (view.cz - hero.cz) * k;
+  const vly = hero.ly + (view.ly - hero.ly) * k, vlz = hero.lz + (view.lz - hero.lz) * k;
+  // the runner turns to face you on the title
+  player.group.rotation.y = Math.PI - (1 - k) * 0.75;
   let cx = player.group.position.x * 0.35;
-  let cy = view.cy;
+  let cy = vcy;
   if (state === 'running') {
     cy += Math.sin(t * 9) * 0.03;
     if (player.flying > 0) cy += player.y * 0.35;
@@ -1164,9 +1285,12 @@ function update(dt, t) {
   } else if (motionQuery.matches) {
     shakeT = 0;
   }
-  camera.position.set(cx, cy, view.cz);
-  camera.lookAt(cx * 0.6, view.ly, view.lz);
+  camera.position.set(cx, cy, vcz);
+  camera.lookAt(cx * 0.6, vly, vlz);
 }
+let camBlend = 0;
+const HERO_PORTRAIT = { cy: 3.2, cz: 6.6, ly: 0.45, lz: -2 };
+const HERO_LANDSCAPE = { cy: 2.4, cz: 5.4, ly: 0.9, lz: -3 };
 
 // ------------------------------------------------------------ sizing
 // Size once per orientation (or real width change), not on every resize, so
@@ -1184,10 +1308,10 @@ function sizeView(force = false) {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   if (portraitNow) {
-    Object.assign(view, { cy: 6.6, cz: 8.2, ly: 0.2, lz: -13 });
+    Object.assign(view, { cy: 6.6, cz: 8.2, ly: 0.2, lz: -13, portrait: true });
     camera.fov = 62;
   } else {
-    Object.assign(view, { cy: 4.6, cz: 7.2, ly: 2.2, lz: -20 });
+    Object.assign(view, { cy: 4.6, cz: 7.2, ly: 2.2, lz: -20, portrait: false });
     camera.fov = 58;
   }
   camera.updateProjectionMatrix();
