@@ -211,11 +211,12 @@ function chunkFestival(rng) {
   addBothSides(g, rng);
   addLamps(g, -5);
   addLamps(g, 12);
-  for (const z of [-10, 10]) {
-    // strung above the portrait camera (6.6 m), so the flags pass over the
-    // top of the screen instead of sweeping across the runner
-    const b = makeBunting(16.5, 8.8);
-    b.position.set(0, 0, z);
+  // bunting runs along the shop fronts, not across the street, so no flag
+  // ever sweeps over the runner or the score
+  for (const side of [-1, 1]) {
+    const b = makeBunting(CHUNK_LEN - 2, 5.4);
+    b.rotation.y = Math.PI / 2;
+    b.position.set(side * 7.9, 0, 0);
     g.add(b);
   }
   put(g, makeBand(), -DECOR_X - 1.2, 2, 1.35);

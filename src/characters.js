@@ -74,7 +74,7 @@ export const CHARACTERS = [
     shirt: 0x2a2a34, pants: 0x2a2a34, shoes: 0xf2f2f2,
     hat: 'beanie', hatColor: 0x6a4fb0,
     vest: 0xd8ff3a, headphones: true,
-    unlock: { kind: 'block', n: 7, text: 'Finish Block 6 (the Night Market)' },
+    unlock: { kind: 'block', n: 7, text: 'Finish Block 6' },
   },
 ];
 

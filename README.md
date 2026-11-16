@@ -29,8 +29,9 @@ https://play.btownbrief.com/church-street-runner/.
 ## Controls
 
 - Phone: swipe left/right to change lanes, up to jump, down to slide. Swipes
-  fire as soon as your finger has moved, and you can chain swipes without
-  lifting. Tap anywhere on the game-over screen to run again.
+  fire as soon as your finger has moved 24 px. One stroke is one move, however
+  long the swipe; a new direction (or the same one after a short pause) fires
+  again without lifting. Tap anywhere on the game-over screen to run again.
 - Keyboard: arrow keys or WASD; Space runs / jumps / restarts.
 
 ## How a run works
