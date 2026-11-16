@@ -279,3 +279,136 @@ Run against the built `docs/` at 390x844, touch emulation, real CDP touches.
 12. **Leaderboard:** a finished run posts to `submit_score` with `p_game: 'church-street-runner'` and the board renders.
 13. **Ticker:** hidden while running, visible on the title and game-over screens.
 14. **One-tap retry:** from game over, one tap starts a new run after the 700 ms grace.
+
+## Review after upgrade
+
+Advisor re-review, 2026-11-16, of commits `ba7aad6` and `0b51ed3` on
+`upgrade-2026-11-16`. Played the built `docs/` as a 390x844 touch phone:
+16 real-time runs driven by real CDP swipes (3 as a first-time player with the
+tutorial, 13 as a returning player with human-speed reactions and lapses), one
+400-second fast-forward run through block 22, three other dates (Night Owl,
+Dog Day, Maple Rush), and the UI screens. Compared against the live site, which
+still serves the `main` bundle. Screenshots and scripts:
+`/tmp/upgrade-church-street-runner/review/`. `docs/` matches a fresh build of
+`src/`. No console errors (two Three.js deprecation warnings only). No score
+was posted to the real board.
+
+### Verdict
+
+A real upgrade. The banners are gone, the screen is clean, hits feel earned,
+and a long run now travels from morning to night through visibly different
+streets. It is fun for the first handful of runs. It is not yet a game where
+run 10 feels fresh: the variety is real but back-loaded, and an ordinary
+player replays the same first 70 seconds every time.
+
+### Scores (before -> now)
+
+| Area | Before | Now | Why |
+|---|---|---|---|
+| Fun | 4 | 6 | Patterns give rhythm and block 3 finally demands jumps and slides. The first 38 s asks for nothing, and nothing surprising happens inside a block. |
+| Difficulty curve | 3 | 7 | Gentle, fair ramp. Casual-speed play ends at 34-93 s (median 77 s), almost always in block 2 or 3. The opening is too slow for anyone past their first day. |
+| Readability | 4 | 7 | Runner, ring, orange gates and open lane read in a second in daylight. Sunset and night tint everything one hue; bunting sweeps across the runner; sidewalk decor still uses hazard models. |
+| Taste / Looks | 5 | 7 | HUD, title and game-over are calm and deliberate; the six skies are lovely. Runner chips cover the runner on the title; the hit flash is heavy. |
+| Phone feel | 5 | 7 | Swipe-on-move works, one-tap retry worked 15 of 15 times, the jump clears from 0.5 m to 5 m out at start speed (about 0.44 s of window). Not checked on a real iPhone. |
+| Variety | 2 | 6 | 20 patterns and 6 themes exist, but a typical run sees 2-3 themes, in the same order, on the same clock. |
+| Reason to return | 3 | 5 | Daily twist, streak number, best line, four unlocks. No daily goal, the streak earns nothing, and two of the four runners unlocked within my first 6 runs. |
+
+### What clearly improved
+
+- **The view.** No navy bars, bare score, three pips, block name. Compare
+  `review/H.jpg` (live) with `review/A.jpg` (now).
+- **Fair hits.** Three lives, capped prop height, buffered jump, cars as
+  scenery. Every hit I logged had a visible cause in the lane.
+- **A run goes somewhere.** `review/C.jpg`, `D.jpg`, `E.jpg`: morning, noon,
+  afternoon, golden hour, sunset, night, then Day 2. The corner breather and
+  the block card make a good beat.
+- **Teach by doing.** Three ghost-arrow props that bump without costing a life
+  (`review/I.jpg`). First coin at 1.4 s, first prop at about 4 s.
+- **Game over.** Score, one goal bar, RUN AGAIN in the thumb zone
+  (`review/F.jpg`). The leaderboard sheet no longer sits on the retry button.
+- **Tomorrow looks different.** Nov 17 is Night Owl: the run starts in the dark
+  (`review/J.jpg`). That is a real day-to-day change.
+
+### What is still weak or broken
+
+- **Every run has the same first 70 seconds.** In 10 back-to-back real-touch
+  runs, block 2 began at 37.5-39.0 s and block 3 at 69.3-76.7 s, always
+  Morning Stroll -> Festival -> Dogs Off Leash (today's fixed order). Six of
+  ten reached block 3; none reached block 4. So the ordinary player never sees
+  golden hour, sunset or night, which is where the variety lives.
+- **The opening is slack for returning players.** Block 1 is 38 s of optional
+  low props at 10-12 m/s (slower than the live game's 11 m/s start). On
+  Festival Day the reward block comes second and drops back to tier 1, so the
+  first 70 s never requires a move.
+- **Nothing to do today except beat your own number.** The twist changes the
+  street but gives no target. The streak counts days opened, not anything
+  achieved. Busker unlocked on run 3 and Chef by about run 6 (1,532 coins
+  banked in 13 runs); Mail Carrier and Night Owl need 110+ and 160+ second
+  runs that a casual player will not get.
+- **Tinted blocks lose contrast.** Sunset turns the runner, props and gates the
+  same salmon (`review/D.jpg` first panel, `new/revfull-t125.png`); at night
+  dollies, box stacks and bikes are near-black on dark brick
+  (`new/revnight-t158.png`, `review/J.jpg`). "Orange means duck" is weakest
+  exactly where the game is fastest.
+- **Bunting flies through the camera.** In festival chunks the flags pass at
+  runner depth as screen-wide triangles (`review/B.jpg` second panel,
+  `review/C.jpg` second panel).
+- **Decor still looks like hazards.** Bikes, boulders and sandwich boards sit
+  on the sidewalk right beside the grey strips, the same models as the props in
+  the lanes (`review/A.jpg` third panel).
+- **The best line is easy to miss.** Two small green signs near the horizon
+  until the last second (`new/pb-approach.png`). The "NEW BEST!" moment on
+  crossing is good; the approach has no tension.
+- **Small taste misses.** The runner on the title stands behind the chip row,
+  so you cannot see who you are picking (`review/fresh-title.png`). The hit
+  flash washes the whole screen while the runner is blinked out
+  (`review/K.jpg`, bottom right). A first-ever run of 327 says "NEW BEST!".
+- **After block 7 it is flat again** (28 m/s cap, Day 2 pairs forever). Only
+  experts get there, so this is last in line.
+- **Not verified:** real iPhone Safari (toolbar stretch, haptics, audio
+  start), and a real leaderboard post with a saved name (tests intercept it).
+
+### Final punch list (ranked by impact)
+
+1. **Shorter blocks, so an ordinary run crosses more corners.** `BLOCK_LEN`
+   420 -> 300 m (cross street every 10th chunk). Speed
+   `min(28, 10 + 1.5*(block-1) + 1.8*progress)`. Pattern tier by block:
+   1, 2, 2, 3, 4, 4 (forced jumps and slides still start near 900 m, where they
+   start today). Re-scale the unlocks to match: Busker block 4, Mail Carrier
+   block 6, Night Owl "finish block 6" unchanged. *Check:* the same sloppy
+   real-touch bot (`review/rt.js`, `SKILL=0`) crosses 3 or more corners in its
+   median run and reaches the golden-hour sky in at least 3 of 10 runs; night
+   begins before 2:00.
+2. **Make run 10 open differently from run 9.** (a) Shuffle the middle blocks
+   per run, not per day; the daily twist keeps only its signature (Festival
+   second, dogs second, night first). (b) Once `csr-far` >= 3, drop the 200 m
+   "centre lane clear" opening and let block 1 draw half its patterns from
+   tier 2. (c) A reward block never drops below tier 2 when it is block 2.
+   *Check:* 10 runs on one date show at least 3 different block-2 themes
+   (except on Festival Day and Dog Day), and a returning player meets a
+   walker or solid before 15 s.
+3. **One daily goal, and a streak that means something.** The date seed picks
+   one goal that fits the twist ("Reach block 4", "150 coins in one run",
+   "Clear a block without a hit", "3 close calls in a row"). Show it on the
+   title under TODAY and as the game-over progress line until it is done, then
+   show a stamp. Count the streak in days the goal was completed (new key
+   `csr-goal`, keep `csr-streak`). At a 3-day streak the ground ring turns
+   gold. *Check:* `setDate` to three consecutive dates, complete each goal,
+   ring is gold; skip a day and it resets.
+4. **Keep hazard colours true under sunset and night.** Tint the sky and fog,
+   not the street: hold the hemisphere light near white in blocks 5-6, give
+   props, walkers and gates the same small emissive lift the runner gets
+   (gates emissive orange), and raise or fade the bunting so no flag crosses
+   the lower 60% of the screen. Keep bikes, boulders and sandwich boards out of
+   sidewalk decor within 2 m of the grey strips. *Check:* in sunset and night
+   screenshots the gate is clearly orange, every prop is lighter than the
+   brick, and no flag overlaps the runner.
+5. **Give the best line a run-up.** From 200 m out, show "BEST in 140 m" under
+   the score, counting down. Make the chalk line a full-width cream stripe with
+   large lettering, readable from 100 m. Do not show "NEW BEST!" on a
+   player's first-ever run. *Check:* with `csr-best-dist` 300, the countdown
+   appears at 100 m and the line is obvious in a screenshot at 220 m.
+6. **Two small taste fixes.** Title: move the camera or the chip row so the
+   chosen runner stands in clear view above the chips. Hit: replace the
+   full-screen wash with an edge vignette of 150 ms or less, so the next row
+   stays readable while the runner blinks.
