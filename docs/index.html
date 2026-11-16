@@ -193,9 +193,12 @@
     .stat-line { margin-top: 10px; font-size: 15px; font-weight: 800; color: var(--peach); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .stat-line:empty { display: none; }
     .runner-row {
+      position: relative;
       display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden;
       max-width: min(100%, 520px); padding: 4px 4px 8px;
       touch-action: pan-x; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 22px), transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 14px, #000 calc(100% - 22px), transparent);
     }
     .runner-row::-webkit-scrollbar { display: none; }
     .chip {
@@ -322,7 +325,7 @@
 <!-- GoatCounter -->
 <script data-goatcounter="https://btown-brief.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/index-COV0HZxQ.js"></script>
+  <script type="module" crossorigin src="./assets/index-CTWOF3ns.js"></script>
 </head>
 <body>
   <div id="app"></div>

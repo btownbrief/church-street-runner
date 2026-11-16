@@ -141,39 +141,75 @@ scene.add(chaser);
 
 // ------------------------------------------------------------ personal-best lines on the street
 
+// A chalk line across the street at a distance you reached before, with a
+// pole and a small sign on each grey strip so you can see it coming.
 function makeChalkLine(label, strong) {
+  const ink = strong ? '#8dffaa' : '#fff3d6';
+  const group = new THREE.Group();
+  group.visible = false;
+
   const c = document.createElement('canvas');
-  c.width = 512; c.height = 160;
+  c.width = 512; c.height = 256;
   const g = c.getContext('2d');
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(6.8, 2.1),
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.8, 3.4),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
   );
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.025;
-  mesh.renderOrder = 1;
-  mesh.visible = false;
-  mesh.userData.draw = (value) => {
-    g.clearRect(0, 0, 512, 160);
-    g.fillStyle = strong ? 'rgba(255,250,235,0.95)' : 'rgba(255,250,235,0.7)';
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0.025;
+  ground.renderOrder = 1;
+  group.add(ground);
+
+  const sc = document.createElement('canvas');
+  sc.width = 256; sc.height = 96;
+  const sg = sc.getContext('2d');
+  const stex = new THREE.CanvasTexture(sc);
+  stex.colorSpace = THREE.SRGBColorSpace;
+  const poleMat = new THREE.MeshLambertMaterial({ color: 0xf4efe4, emissive: 0x333333 });
+  for (const side of [-1, 1]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.6, 8), poleMat);
+    pole.position.set(side * 3.4, 1.3, 0);
+    group.add(pole);
+    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthWrite: false }));
+    sign.scale.set(1.9, 0.71, 1);
+    sign.position.set(side * 3.4, 2.95, 0);
+    group.add(sign);
+  }
+
+  group.userData.draw = (value) => {
+    const text = `${label} ${value.toLocaleString('en-US')}`;
+    g.clearRect(0, 0, 512, 256);
+    g.fillStyle = strong ? 'rgba(255,250,235,0.95)' : 'rgba(255,250,235,0.75)';
     // a slightly wobbly chalk stripe across all three lanes
-    const th = strong ? 16 : 9;
+    const th = strong ? 22 : 12;
     g.beginPath();
-    g.moveTo(6, 126);
-    for (let x = 6; x <= 506; x += 20) g.lineTo(x, 124 + Math.sin(x * 0.07) * 3);
-    for (let x = 506; x >= 6; x -= 20) g.lineTo(x, 124 + th + Math.sin(x * 0.05) * 2);
+    g.moveTo(6, 214);
+    for (let x = 6; x <= 506; x += 20) g.lineTo(x, 212 + Math.sin(x * 0.07) * 3);
+    for (let x = 506; x >= 6; x -= 20) g.lineTo(x, 212 + th + Math.sin(x * 0.05) * 2);
     g.closePath();
     g.fill();
-    g.font = `900 ${strong ? 76 : 58}px "Avenir Next", system-ui, sans-serif`;
+    g.font = `900 ${strong ? 120 : 92}px "Avenir Next", system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'alphabetic';
-    g.fillText(`${label} ${value.toLocaleString('en-US')}`, 256, 106);
+    g.fillText(text, 256, 180, 500);
     tex.needsUpdate = true;
+
+    sg.clearRect(0, 0, 256, 96);
+    sg.fillStyle = 'rgba(36,22,16,0.82)';
+    sg.beginPath();
+    sg.roundRect(4, 8, 248, 80, 40);
+    sg.fill();
+    sg.fillStyle = ink;
+    sg.font = '900 40px "Avenir Next", system-ui, sans-serif';
+    sg.textAlign = 'center';
+    sg.textBaseline = 'middle';
+    sg.fillText(text, 128, 50, 230);
+    stex.needsUpdate = true;
   };
-  scene.add(mesh);
-  return mesh;
+  scene.add(group);
+  return group;
 }
 const bestLineMesh = makeChalkLine('BEST', true);
 const todayLineMesh = makeChalkLine('TODAY', false);
@@ -240,6 +276,7 @@ let teaching = false;
 let teachShown = null;   // obstacle slot whose hint is on screen
 let teachSeen = 0;
 let countdownT = 0;
+let hitStop = 0;      // a few frames of freeze on impact
 const effectTimers = new Set();
 const MAX_PARTICLES = 40;
 
@@ -610,6 +647,7 @@ function onHit() {
   showCrashImpact();
   sfx.hit();
   buzz(20);
+  hitStop = motionQuery.matches ? 0 : 0.09;
   if (lives > 0) {
     // first crash: the black dog picks up your scent
     invuln = 2.2;
@@ -989,6 +1027,8 @@ function update(dt, t) {
         sfx.tick();
       }
     }
+  } else if (state === 'running' && hitStop > 0) {
+    hitStop -= dt;
   } else if (state === 'running') {
     speed = speedAt(dist);
     const dz = speed * dt;
@@ -1084,7 +1124,11 @@ function update(dt, t) {
         const nearby = obstacles.checkCollision(
           player.x, player.bottom - 0.45, player.top + 0.55, 0.62, 0.52, pz
         );
-        if (nearby && !passedNearMisses.has(nearby)) nearCandidates.set(nearby, effectRunId);
+        // a close call is a late sidestep or a jump that only just cleared,
+        // not every prop you hop over
+        const close = nearby && (Math.abs(nearby.obj.position.x - player.x) > 0.5 ||
+          (player.bottom >= nearby.type.maxY && player.bottom - nearby.type.maxY < 0.3));
+        if (close && !passedNearMisses.has(nearby)) nearCandidates.set(nearby, effectRunId);
         updateNearMisses(pz);
       }
     }

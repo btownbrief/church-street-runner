@@ -89,7 +89,7 @@ const TYPES = [
   dogType('small'), dogType('golden'), dogType('brown'), dogType('shaggy'),
   // --- W: walkers ---
   dogWalkerType('black'), dogWalkerType('golden'), dogWalkerType('shaggy'), dogWalkerType('brown'),
-  pedType('mail', { mailbag: true, hat: 'cap', hatColor: 0x2f4d73, shirt: 0x6d8fb0, pants: 0x35566e }),
+  pedType('mail', { mailbag: true, hat: 'cap', hatColor: 0x4a6a8a, shirt: 0x6d8fb0, pants: 0x35566e }),
   pedType('shopper', { bags: 2 }),
   pedType('texter', { phone: true }),
   pedType('baller', { afro: true, basketball: true, shirt: 0x2e8f8f, pants: 0x2c2c30, skin: 0x6f4a30 }),
