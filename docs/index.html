@@ -333,6 +333,24 @@
       100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(var(--rot)); }
     }
     @keyframes nudge { 50% { transform: translate(var(--nx, 0), var(--ny, -8px)); } }
+    /* short screens (phone in landscape): a compact title so RUN and the
+       runner chips fit */
+    @media (max-height: 500px) {
+      .panel { padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+      .panel h1 { font-size: 30px; }
+      .panel h1 br { display: none; }
+      .panel .sub, .today-blurb { display: none; }
+      .today { margin-top: 8px; font-size: 12px; padding: 4px 12px; }
+      .today-goal { margin-top: 4px; font-size: 13px; }
+      .stat-line { margin-top: 4px; font-size: 13px; }
+      button.cta { margin-top: 6px; padding: 12px 0; font-size: 19px; }
+      .lock-note { min-height: 0; }
+      #gameover { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+      .score-big { font-size: 52px; }
+      .goal { margin-top: 8px; }
+      .over-links { margin-top: 8px; }
+      a.news-link { display: none; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .panel, button.cta, .sheet { transition: none; }
       #score.score-pop, #pips.hit, #impactFlash.active, .float-score,
@@ -344,7 +362,7 @@
 <!-- GoatCounter -->
 <script data-goatcounter="https://btown-brief.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
-  <script type="module" crossorigin src="./assets/index-Cugo4jSI.js"></script>
+  <script type="module" crossorigin src="./assets/index-CkyrVc9n.js"></script>
 </head>
 <body>
   <div id="app"></div>
@@ -370,7 +388,7 @@
   <div id="countdown" aria-live="polite"></div>
 
   <div id="start" class="panel">
-    <h1>CHURCH STREET<br /><span>RUNNER</span></h1>
+    <h1>CHURCH STREET<br /> <span>RUNNER</span></h1>
     <div class="sub">An endless runner down Burlington's Church Street</div>
     <div class="today" id="todayLine">TODAY</div>
     <div class="today-blurb" id="todayBlurb"></div>

@@ -60,7 +60,7 @@ https://play.btownbrief.com/church-street-runner/.
 - **Daily.** The America/New_York date picks one twist (Dog Day, Creemee Day,
   Maple Rush, Festival Day, Night Owl) and one goal that suits it (reach block
   4 or 5, 120 or 200 coins in a run, clear a block without a hit, 3 close calls
-  in a row). The goal shows on the title and on the game-over screen until it
+  in one run). The goal shows on the title and on the game-over screen until it
   is done, then a stamp. The streak counts days in a row with the goal done;
   at a 3-day streak the ring under your runner turns gold.
 - **Goals.** Four starter runners, four more to unlock (reach block 4, reach

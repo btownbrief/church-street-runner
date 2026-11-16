@@ -169,14 +169,31 @@ function makeChalkLine(label, strong) {
   const stex = new THREE.CanvasTexture(sc);
   stex.colorSpace = THREE.SRGBColorSpace;
   const poleMat = new THREE.MeshLambertMaterial({ color: 0xf4efe4, emissive: 0x333333 });
-  for (const side of [-1, 1]) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.6, 8), poleMat);
-    pole.position.set(side * 3.4, 1.3, 0);
-    group.add(pole);
-    const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthWrite: false, fog: !strong }));
-    sign.scale.set(strong ? 2.3 : 1.9, strong ? 0.86 : 0.71, 1);
-    sign.position.set(side * 3.4, 2.95, 0);
-    group.add(sign);
+  if (strong) {
+    // your best: two tall poles and a banner strung high across the street
+    // (above the camera's eye line near the runner, so it never reads as a
+    // gate), readable from 100 m out
+    for (const side of [-1, 1]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 6.4, 8), poleMat);
+      pole.position.set(side * 3.6, 3.2, 0);
+      group.add(pole);
+    }
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(7.2, 2.7),
+      new THREE.MeshBasicMaterial({ map: stex, transparent: true, depthWrite: false, fog: false })
+    );
+    banner.position.set(0, 5.6, 0);
+    group.add(banner);
+  } else {
+    for (const side of [-1, 1]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.6, 8), poleMat);
+      pole.position.set(side * 3.4, 1.3, 0);
+      group.add(pole);
+      const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: stex, transparent: true, depthWrite: false }));
+      sign.scale.set(1.9, 0.71, 1);
+      sign.position.set(side * 3.4, 2.95, 0);
+      group.add(sign);
+    }
   }
 
   group.userData.draw = (value) => {
@@ -291,6 +308,7 @@ let goalProg = 0;
 let goalDoneRun = false;
 let hitThisBlock = false;
 let pbCountShown = '';
+let closeCalls = 0;   // close calls this run (for the daily goal)
 const effectTimers = new Set();
 const MAX_PARTICLES = 40;
 
@@ -478,7 +496,8 @@ function confirmNearMiss() {
   scoreEl.textContent = Math.floor(score);
   popScore();
   showCallout(`CLOSE ONE! +${bonus} · ×${nearMissStreak}`);
-  advanceGoal('close', nearMissStreak);
+  closeCalls += 1;
+  advanceGoal('close', closeCalls);
   sfx.nearMiss();
   buzz(8);
 }
@@ -659,6 +678,7 @@ function startGame() {
   goalProg = 0;
   goalDoneRun = false;
   hitThisBlock = false;
+  closeCalls = 0;
   chunks.biasFor = (seq) => blockInfo(plan, Math.floor((seq * CHUNK_LEN) / BLOCK_LEN) + 1).theme.chunkBias;
   chunks.reset();
   obstacles.reset();

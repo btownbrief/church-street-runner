@@ -160,7 +160,7 @@ export const GOALS = {
   coins: { id: 'coins', text: 'Grab 120 coins in one run', n: 120, unit: 'coins' },
   maple: { id: 'maple', text: 'Grab 200 coins in one run', n: 200, unit: 'coins' },
   clean: { id: 'clean', text: 'Clear a block without a hit', n: 1, unit: 'clean' },
-  close: { id: 'close', text: '3 close calls in a row', n: 3, unit: 'close' },
+  close: { id: 'close', text: '3 close calls in one run', n: 3, unit: 'close' },
 };
 const GOAL_POOL = {
   dogday: ['clean', 'reach4'],
