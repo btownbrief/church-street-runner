@@ -284,8 +284,8 @@ Run against the built `docs/` at 390x844, touch emulation, real CDP touches.
 
 Advisor re-review, 2026-11-16, of commits `ba7aad6` and `0b51ed3` on
 `upgrade-2026-11-16`. Played the built `docs/` as a 390x844 touch phone:
-16 real-time runs driven by real CDP swipes (3 as a first-time player with the
-tutorial, 13 as a returning player with human-speed reactions and lapses), one
+16 real-time runs driven by real CDP swipes (2 as a first-time player with the
+tutorial, 14 as a returning player with human-speed reactions and lapses), one
 400-second fast-forward run through block 22, three other dates (Night Owl,
 Dog Day, Maple Rush), and the UI screens. Compared against the live site, which
 still serves the `main` bundle. Screenshots and scripts:
@@ -309,9 +309,9 @@ player replays the same first 70 seconds every time.
 | Difficulty curve | 3 | 7 | Gentle, fair ramp. Casual-speed play ends at 34-93 s (median 77 s), almost always in block 2 or 3. The opening is too slow for anyone past their first day. |
 | Readability | 4 | 7 | Runner, ring, orange gates and open lane read in a second in daylight. Sunset and night tint everything one hue; bunting sweeps across the runner; sidewalk decor still uses hazard models. |
 | Taste / Looks | 5 | 7 | HUD, title and game-over are calm and deliberate; the six skies are lovely. Runner chips cover the runner on the title; the hit flash is heavy. |
-| Phone feel | 5 | 7 | Swipe-on-move works, one-tap retry worked 15 of 15 times, the jump clears from 0.5 m to 5 m out at start speed (about 0.44 s of window). Not checked on a real iPhone. |
+| Phone feel | 5 | 7 | Swipe-on-move works, one-tap retry worked 13 of 13 times, the jump clears from 0.5 m to 5 m out at start speed (about 0.44 s of window). Not checked on a real iPhone. |
 | Variety | 2 | 6 | 20 patterns and 6 themes exist, but a typical run sees 2-3 themes, in the same order, on the same clock. |
-| Reason to return | 3 | 5 | Daily twist, streak number, best line, four unlocks. No daily goal, the streak earns nothing, and two of the four runners unlocked within my first 6 runs. |
+| Reason to return | 3 | 5 | Daily twist, streak number, best line, four unlocks. No daily goal, the streak earns nothing, and two of the four runners unlocked within my first 5 runs. |
 
 ### What clearly improved
 
@@ -342,8 +342,8 @@ player replays the same first 70 seconds every time.
   first 70 s never requires a move.
 - **Nothing to do today except beat your own number.** The twist changes the
   street but gives no target. The streak counts days opened, not anything
-  achieved. Busker unlocked on run 3 and Chef by about run 6 (1,532 coins
-  banked in 13 runs); Mail Carrier and Night Owl need 110+ and 160+ second
+  achieved. Busker unlocked on run 3 and Chef by about run 5 (383 coins after 3 runs, 1,532
+  after 13); Mail Carrier and Night Owl need 110+ and 160+ second
   runs that a casual player will not get.
 - **Tinted blocks lose contrast.** Sunset turns the runner, props and gates the
   same salmon (`review/D.jpg` first panel, `new/revfull-t125.png`); at night
